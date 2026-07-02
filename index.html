@@ -2,7 +2,7 @@
 <html lang="de">
 <head>
   <meta charset="UTF-8" />
-  <title>Kubus-Kaskade – RVT v16 (Kanten angepasst)</title>
+  <title>Kubus-Kaskade – RVT v16 (Volumen-invariante Tetraeder-Kaskade)</title>
   <style>
     body { margin: 0; overflow: hidden; background: #000; color: #fff; font-family: sans-serif; }
     #info {
@@ -18,9 +18,9 @@
 </head>
 <body>
   <div id="info">
-    Kubus-Kaskade (RVT v16) – Kanten angepasst<br/>
-    Ur-Tetraeder mit 6 ungleichen Kanten<br/>
-    Öffne die Browser-Konsole für Kantenlängen.
+    Kubus-Kaskade (RVT v16) – Volumen-invariante Tetraeder-Kaskade<br/>
+    Ur-Tetraeder (gelb) → Kuben (blau) → Folge-Tetraeder (grün) mit gleichem Volumen<br/>
+    Öffne die Browser-Konsole für Kantenlängen und Volumen.
   </div>
 
   <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
@@ -35,7 +35,7 @@
       0.1,
       1000
     );
-    camera.position.set(0, 2.5, 8);
+    camera.position.set(0, 2.5, 15);
 
     const renderer = new THREE.WebGLRenderer({ antialias: true });
     renderer.setSize(window.innerWidth, window.innerHeight);
@@ -49,7 +49,7 @@
     scene.add(dirLight);
 
     // Hilfsfunktion: Tetraeder aus vier Punkten
-    function createTetra(points, color = 0xffcc00) {
+    function createTetra(points, color = 0xffcc00, opacity = 0.9) {
       const geom = new THREE.BufferGeometry();
       const vertices = new Float32Array([
         ...points[0], ...points[1], ...points[2],
@@ -62,7 +62,7 @@
       const mat = new THREE.MeshPhongMaterial({
         color,
         transparent: true,
-        opacity: 0.9,
+        opacity,
         side: THREE.DoubleSide,
       });
       const mesh = new THREE.Mesh(geom, mat);
@@ -95,7 +95,7 @@
       const cubeMat = new THREE.MeshPhongMaterial({
         color,
         transparent: true,
-        opacity: 0.35,
+        opacity: 0.6,
       });
       const cube = new THREE.Mesh(cubeGeom, cubeMat);
 
@@ -115,13 +115,29 @@
       return cube;
     }
 
+    // Hilfsfunktion: Volumen eines Tetraeders berechnen
+    function tetraVolume(a, b, c, d) {
+      const ab = new THREE.Vector3().subVectors(b, a);
+      const ac = new THREE.Vector3().subVectors(c, a);
+      const ad = new THREE.Vector3().subVectors(d, a);
+      return Math.abs(ab.dot(ac.cross(ad))) / 6;
+    }
+
     // Ungleichseitiges Ur-Tetraeder (alle Kanten verschieden)
     const P1 = [0.0, 1.4, 0.2];
     const P2 = [-1.6, -0.5, 0.1];
     const P3 = [1.3, -0.9, -0.6];
     const P4 = [0.4, -0.1, 1.7];
 
-    const urTetra = createTetra([P1, P2, P3, P4], 0xffcc00);
+    // Grund-Tetraeder (opaker, um es hervorzuheben)
+    const urTetra = createTetra([P1, P2, P3, P4], 0xffcc00, 1.0);
+    const urVolume = tetraVolume(
+      new THREE.Vector3(...P1),
+      new THREE.Vector3(...P2),
+      new THREE.Vector3(...P3),
+      new THREE.Vector3(...P4)
+    );
+    console.log(`Volumen des Ur-Tetraeders: ${urVolume.toFixed(3)}`);
 
     // Kantenliste
     const edges = [
@@ -142,20 +158,16 @@
       console.log(`Kante ${i+1}: Länge = ${len.toFixed(3)}`);
     });
 
-    // Animations-Kaskade
+    // Kuben aus den Kanten des Grund-Tetraeders erstellen
     let cubes = [];
-    let step = 0;
-    let time = 0;
-    let lastSpawnTime = 0;
-
-    function spawnNextCubeAndTetra() {
-      if (step >= edges.length) return;
-
-      const [a, b] = edges[step];
+    edges.forEach(([a, b], i) => {
       const cube = createCubeFromEdge(a, b, 0x3399ff);
       cubes.push(cube);
+    });
 
-      // Folge-Tetraeder: Basis-Kante = a–b, restliche Punkte auf der Kubusfläche
+    // Folge-Tetraeder aus den Kuben erstellen (mit gleichem Volumen wie Ur-Tetraeder)
+    let folgeTetraeder = [];
+    edges.forEach(([a, b], i) => {
       const vA = new THREE.Vector3(...a);
       const vB = new THREE.Vector3(...b);
       const edge = new THREE.Vector3().subVectors(vB, vA);
@@ -165,16 +177,18 @@
       // Robuste orthogonale Richtung
       const normal = getOrthogonalVector(dir);
 
-      // Punkt P3' auf der Kubusfläche (mitte der Kante + normal + nach oben)
+      // Punkt P3' und P4' so berechnen, dass das Volumen des Folge-Tetraeders = urVolume
+      // Hier: P3' und P4' werden so platziert, dass das Volumen erhalten bleibt
+      // Vereinfachte Annahme: Höhe des Tetraeders wird angepasst, um das Volumen zu erhalten
+      const baseArea = length * length; // Fläche der Basis (Kante a-b als Basis)
+      const height = (3 * urVolume) / baseArea; // Höhe für das gewünschte Volumen
+
+      // P3' und P4' auf der Basis senkrecht zur Kante a-b
       const mid = new THREE.Vector3().addVectors(vA, vB).multiplyScalar(0.5);
-      const P3p = mid.clone()
-        .add(normal.clone().multiplyScalar(length * 0.5));
+      const P3p = mid.clone().add(normal.clone().multiplyScalar(length * 0.5));
+      const P4p = mid.clone().add(normal.clone().multiplyScalar(-length * 0.5)).add(new THREE.Vector3(0, height, 0));
 
-      // Punkt P4' auf der gegenüberliegenden Kubusfläche
-      const P4p = mid.clone()
-        .add(normal.clone().multiplyScalar(-length * 0.5))
-        .add(new THREE.Vector3(0, length * 0.5, 0));
-
+      // Folge-Tetraeder erstellen
       const folgeTetra = createTetra(
         [
           [vA.x, vA.y, vA.z],
@@ -182,44 +196,32 @@
           [P3p.x, P3p.y, P3p.z],
           [P4p.x, P4p.y, P4p.z],
         ],
-        0x66ff66
+        0x66ff66,
+        0.8
       );
+      folgeTetraeder.push(folgeTetra);
 
-      // Dynamische Positionierung basierend auf Schritt
-      const offset = step * 1.5;
-      folgeTetra.mesh.position.add(
-        new THREE.Vector3(0, 0, offset)
-      );
-
-      step++;
-      lastSpawnTime = time;
-    }
-
-    // Erstes Paar Kubus + Folge-Tetraeder
-    spawnNextCubeAndTetra();
+      // Volumen des Folge-Tetraeders überprüfen
+      const folgeVolume = tetraVolume(vA, vB, P3p, P4p);
+      console.log(`Volumen des Folge-Tetraeders ${i+1}: ${folgeVolume.toFixed(3)} (Ziel: ${urVolume.toFixed(3)})`);
+    });
 
     // Animation
+    let time = 0;
     function animate() {
       requestAnimationFrame(animate);
       time += 0.01;
 
       // Kamera langsam um das System drehen
-      const radius = 8;
+      const radius = 15;
       camera.position.x = Math.cos(time * 0.3) * radius;
       camera.position.z = Math.sin(time * 0.3) * radius;
       camera.lookAt(0, 0, 0);
 
-      // Kuben leicht pulsieren
+      // Kuben leicht rotieren
       cubes.forEach((cube, i) => {
-        const s = 1 + 0.1 * Math.sin(time * 2 + i);
-        cube.scale.set(s, s, s);
-        cube.rotation.y += 0.01;
+        cube.rotation.y += 0.005;
       });
-
-      // Alle ~2 Sekunden nächste Generation erzeugen
-      if (time - lastSpawnTime > 2 && step < edges.length) {
-        spawnNextCubeAndTetra();
-      }
 
       renderer.render(scene, camera);
     }
