@@ -20,7 +20,7 @@
   <div id="info">
     Kubus-Kaskade (RVT v16) – Kantenbasierte Kaskade<br/>
     Ur-Tetraeder (gelb, intransparent) → Kuben (orange, transparent)<br/>
-    Folge-Tetraeder (grün, transparent) aus Kubus-Kanten.
+    Folge-Tetraeder (grün, transparent) aus äußersten Kubus-Kanten.
   </div>
 
   <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
@@ -156,11 +156,16 @@
     cubeEdges.forEach((cubeEdge, i) => {
       const { vA, vB, length, dir, mid } = cubeEdge;
       const normal = getOrthogonalVector(dir);
-      const baseArea = length * length;
+
+      const outerEdgeLength = length;
+      const outerEdgeDir = dir.clone();
+      const outerEdgeMid = mid.clone().add(outerEdgeDir.multiplyScalar(length / 2));
+
+      const baseArea = outerEdgeLength * outerEdgeLength;
       const height = (3 * urVolume) / baseArea;
 
-      const P3p = mid.clone().add(normal.clone().multiplyScalar(length * 0.5));
-      const P4p = mid.clone().add(normal.clone().multiplyScalar(-length * 0.5)).add(new THREE.Vector3(0, height, 0));
+      const P3p = outerEdgeMid.clone().add(normal.clone().multiplyScalar(outerEdgeLength * 0.5));
+      const P4p = outerEdgeMid.clone().add(normal.clone().multiplyScalar(-outerEdgeLength * 0.5)).add(new THREE.Vector3(0, height, 0));
 
       const folgeTetra = createTetra(
         [
