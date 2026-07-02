@@ -25,7 +25,6 @@
 
   <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
   <script>
-    // Szene, Kamera, Renderer
     const scene = new THREE.Scene();
     scene.background = new THREE.Color(0x050510);
 
@@ -41,14 +40,12 @@
     renderer.setSize(window.innerWidth, window.innerHeight);
     document.body.appendChild(renderer.domElement);
 
-    // Licht
     const ambient = new THREE.AmbientLight(0xffffff, 0.4);
     scene.add(ambient);
     const dirLight = new THREE.DirectionalLight(0xffffff, 0.8);
     dirLight.position.set(5, 10, 7);
     scene.add(dirLight);
 
-    // Hilfsfunktion: Tetraeder aus vier Punkten
     function createTetra(points, color = 0xffcc00, opacity = 0.9) {
       const geom = new THREE.BufferGeometry();
       const vertices = new Float32Array([
@@ -70,7 +67,6 @@
       return { mesh, points };
     }
 
-    // Hilfsfunktion: Robuste orthogonale Richtung berechnen
     function getOrthogonalVector(v) {
       const ortho = new THREE.Vector3();
       if (Math.abs(v.x) < 0.5) {
@@ -83,14 +79,12 @@
       return ortho.cross(v).normalize();
     }
 
-    // Hilfsfunktion: Kubus-Kanten entlang einer Tetraeder-Kante (orange, transparent)
     function createCubeEdgesFromTetraEdge(pA, pB, color = 0xff8800) {
       const vA = new THREE.Vector3(...pA);
       const vB = new THREE.Vector3(...pB);
       const edge = new THREE.Vector3().subVectors(vB, vA);
       const length = edge.length();
 
-      // Kubus-Geometrie mit exakter Kantenlänge
       const cubeGeom = new THREE.BoxGeometry(length, length, length);
       const edgesGeom = new THREE.EdgesGeometry(cubeGeom);
       const cubeMat = new THREE.LineBasicMaterial({
@@ -100,11 +94,9 @@
       });
       const cube = new THREE.LineSegments(edgesGeom, cubeMat);
 
-      // Mittelpunkt der Kante
       const mid = new THREE.Vector3().addVectors(vA, vB).multiplyScalar(0.5);
       cube.position.copy(mid);
 
-      // Ausrichtung: Kantenrichtung als x-Achse
       const dir = edge.clone().normalize();
       const quat = new THREE.Quaternion().setFromUnitVectors(
         new THREE.Vector3(1, 0, 0),
@@ -116,7 +108,6 @@
       return { cube, vA, vB, length, dir, mid };
     }
 
-    // Hilfsfunktion: Volumen eines Tetraeders berechnen
     function tetraVolume(a, b, c, d) {
       const ab = new THREE.Vector3().subVectors(b, a);
       const ac = new THREE.Vector3().subVectors(c, a);
@@ -124,13 +115,11 @@
       return Math.abs(ab.dot(ac.cross(ad))) / 6;
     }
 
-    // Ungleichseitiges Ur-Tetraeder (alle Kanten verschieden)
     const P1 = [0.0, 1.4, 0.2];
     const P2 = [-1.6, -0.5, 0.1];
     const P3 = [1.3, -0.9, -0.6];
     const P4 = [0.4, -0.1, 1.7];
 
-    // Grund-Tetraeder (intransparent, gelb)
     const urTetra = createTetra([P1, P2, P3, P4], 0xffcc00, 1.0);
     const urVolume = tetraVolume(
       new THREE.Vector3(...P1),
@@ -140,7 +129,6 @@
     );
     console.log(`Volumen des Ur-Tetraeders: ${urVolume.toFixed(3)}`);
 
-    // Kantenliste des Ur-Tetraeders
     const edges = [
       [P1, P2],
       [P1, P3],
@@ -150,7 +138,6 @@
       [P3, P4],
     ];
 
-    // Kantenlängen berechnen und ausgeben
     console.log("Kantenlängen des Ur-Tetraeders:");
     edges.forEach(([a, b], i) => {
       const vA = new THREE.Vector3(...a);
@@ -159,30 +146,22 @@
       console.log(`Kante ${i+1}: Länge = ${len.toFixed(3)}`);
     });
 
-    // Kuben-Kanten aus den Kanten des Grund-Tetraeders erstellen (orange, transparent)
     let cubeEdges = [];
     edges.forEach(([a, b], i) => {
       const cubeEdge = createCubeEdgesFromTetraEdge(a, b, 0xff8800);
       cubeEdges.push(cubeEdge);
     });
 
-    // Folge-Tetraeder aus den Kanten der Kuben erstellen (grün, transparent)
     let folgeTetraeder = [];
     cubeEdges.forEach((cubeEdge, i) => {
       const { vA, vB, length, dir, mid } = cubeEdge;
-
-      // Robuste orthogonale Richtung
       const normal = getOrthogonalVector(dir);
+      const baseArea = length * length;
+      const height = (3 * urVolume) / baseArea;
 
-      // Punkt P3' und P4' so berechnen, dass das Volumen des Folge-Tetraeders = urVolume
-      const baseArea = length * length; // Fläche der Basis (Kante vA-vB als Basis)
-      const height = (3 * urVolume) / baseArea; // Höhe für das gewünschte Volumen
-
-      // P3' und P4' auf der Basis senkrecht zur Kante vA-vB
       const P3p = mid.clone().add(normal.clone().multiplyScalar(length * 0.5));
       const P4p = mid.clone().add(normal.clone().multiplyScalar(-length * 0.5)).add(new THREE.Vector3(0, height, 0));
 
-      // Folge-Tetraeder erstellen (transparent, grün)
       const folgeTetra = createTetra(
         [
           [vA.x, vA.y, vA.z],
@@ -195,18 +174,15 @@
       );
       folgeTetraeder.push(folgeTetra);
 
-      // Volumen des Folge-Tetraeders überprüfen
       const folgeVolume = tetraVolume(vA, vB, P3p, P4p);
       console.log(`Volumen des Folge-Tetraeders ${i+1}: ${folgeVolume.toFixed(3)} (Ziel: ${urVolume.toFixed(3)})`);
     });
 
-    // Animation
     let time = 0;
     function animate() {
       requestAnimationFrame(animate);
       time += 0.01;
 
-      // Kamera langsam um das System drehen
       const radius = 15;
       camera.position.x = Math.cos(time * 0.3) * radius;
       camera.position.z = Math.sin(time * 0.3) * radius;
@@ -217,7 +193,6 @@
 
     animate();
 
-    // Resize
     window.addEventListener('resize', () => {
       camera.aspect = window.innerWidth / window.innerHeight;
       camera.updateProjectionMatrix();
