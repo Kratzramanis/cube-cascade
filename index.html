@@ -233,7 +233,7 @@
           [tetraP4.x, tetraP4.y, tetraP4.z]
         ], getRandomColor(), 1.0);
         
-        const cubeData = buildCubeOnEdge(tetraP3, tetraP4, getRandomColor(), 1.0);
+        buildCubeOnEdge(tetraP3, tetraP4, getRandomColor(), 1.0);
       }
     }
 
@@ -257,8 +257,8 @@
       }
 
       const radius = 22;
-      camera.position.x = Math.cos(time * 0.3) * radius;
-      camera.position.z = Math.sin(time * 0.3) * radius;
+      camera.position.x = Math.cos(time * 0.6) * radius;
+      camera.position.z = Math.sin(time * 0.6) * radius;
       camera.lookAt(0, 0, 0);
 
       renderer.render(scene, camera);
