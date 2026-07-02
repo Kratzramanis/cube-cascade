@@ -19,8 +19,8 @@
 <body>
   <div id="info">
     Kubus-Kaskade (RVT v16) – Kantenbasierte Kaskade<br/>
-    Ur-Tetraeder (gelb, intransparent) → Kuben (orange, transparent)<br/>
-    Folge-Tetraeder (grün, transparent) aus äußersten Kubus-Kanten.
+    Ur-Tetraeder (gelb) → Kuben (orange, Transparenz: 0.3)<br/>
+    Folge-Tetraeder (grün) → Neue Kuben (blau, Transparenz: 0.3)
   </div>
 
   <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
@@ -79,7 +79,7 @@
       return ortho.cross(v).normalize();
     }
 
-    function createCubeEdgesFromTetraEdge(pA, pB, color = 0xff8800) {
+    function createCubeEdgesFromTetraEdge(pA, pB, color = 0xff8800, opacity = 0.3) {
       const vA = new THREE.Vector3(...pA);
       const vB = new THREE.Vector3(...pB);
       const edge = new THREE.Vector3().subVectors(vB, vA);
@@ -90,7 +90,7 @@
       const cubeMat = new THREE.LineBasicMaterial({
         color,
         transparent: true,
-        opacity: 0.8,
+        opacity,
       });
       const cube = new THREE.LineSegments(edgesGeom, cubeMat);
 
@@ -147,46 +147,81 @@
     });
 
     let cubeEdges = [];
-    edges.forEach(([a, b], i) => {
-      const cubeEdge = createCubeEdgesFromTetraEdge(a, b, 0xff8800);
-      cubeEdges.push(cubeEdge);
-    });
-
     let folgeTetraeder = [];
-    cubeEdges.forEach((cubeEdge, i) => {
-      const { vA, vB, length, dir, mid } = cubeEdge;
-      const normal = getOrthogonalVector(dir);
+    let nextCubeEdges = [];
+    let step = 0;
+    let time = 0;
+    let lastSpawnTime = 0;
 
-      const outerEdgeLength = length;
-      const outerEdgeDir = dir.clone();
-      const outerEdgeMid = mid.clone().add(outerEdgeDir.multiplyScalar(length / 2));
+    function spawnNextCube() {
+      if (step >= edges.length) {
+        spawnNextTetraederAndCube();
+        return;
+      }
 
-      const baseArea = outerEdgeLength * outerEdgeLength;
-      const height = (3 * urVolume) / baseArea;
+      const [a, b] = edges[step];
+      const cubeEdge = createCubeEdgesFromTetraEdge(a, b, 0xff8800, 0.3);
+      cubeEdges.push(cubeEdge);
+      step++;
+      lastSpawnTime = time;
+    }
 
-      const P3p = outerEdgeMid.clone().add(normal.clone().multiplyScalar(outerEdgeLength * 0.5));
-      const P4p = outerEdgeMid.clone().add(normal.clone().multiplyScalar(-outerEdgeLength * 0.5)).add(new THREE.Vector3(0, height, 0));
+    function spawnNextTetraederAndCube() {
+      if (step >= edges.length + 1) return;
 
-      const folgeTetra = createTetra(
-        [
-          [vA.x, vA.y, vA.z],
-          [vB.x, vB.y, vB.z],
+      cubeEdges.forEach((cubeEdge, i) => {
+        const { vA, vB, length, dir, mid } = cubeEdge;
+        const normal = getOrthogonalVector(dir);
+
+        const outerEdgeLength = length;
+        const outerEdgeDir = dir.clone();
+        const outerEdgeMid = mid.clone().add(outerEdgeDir.multiplyScalar(length / 2));
+
+        const baseArea = outerEdgeLength * outerEdgeLength;
+        const height = (3 * urVolume) / baseArea;
+
+        const P3p = outerEdgeMid.clone().add(normal.clone().multiplyScalar(outerEdgeLength * 0.5));
+        const P4p = outerEdgeMid.clone().add(normal.clone().multiplyScalar(-outerEdgeLength * 0.5)).add(new THREE.Vector3(0, height, 0));
+
+        const folgeTetra = createTetra(
+          [
+            [vA.x, vA.y, vA.z],
+            [vB.x, vB.y, vB.z],
+            [P3p.x, P3p.y, P3p.z],
+            [P4p.x, P4p.y, P4p.z],
+          ],
+          0x66ff66,
+          0.7
+        );
+        folgeTetraeder.push(folgeTetra);
+
+        const folgeVolume = tetraVolume(vA, vB, P3p, P4p);
+        console.log(`Volumen des Folge-Tetraeders ${i+1}: ${folgeVolume.toFixed(3)} (Ziel: ${urVolume.toFixed(3)})`);
+
+        const newCubeEdge = createCubeEdgesFromTetraEdge(
           [P3p.x, P3p.y, P3p.z],
           [P4p.x, P4p.y, P4p.z],
-        ],
-        0x66ff66,
-        0.7
-      );
-      folgeTetraeder.push(folgeTetra);
+          0x0088ff,
+          0.3
+        );
+        nextCubeEdges.push(newCubeEdge);
+      });
 
-      const folgeVolume = tetraVolume(vA, vB, P3p, P4p);
-      console.log(`Volumen des Folge-Tetraeders ${i+1}: ${folgeVolume.toFixed(3)} (Ziel: ${urVolume.toFixed(3)})`);
-    });
+      step++;
+      lastSpawnTime = time;
+    }
 
-    let time = 0;
     function animate() {
       requestAnimationFrame(animate);
       time += 0.01;
+
+      if (time - lastSpawnTime > 1 && step < edges.length) {
+        spawnNextCube();
+      }
+
+      if (step === edges.length && time - lastSpawnTime > 1) {
+        spawnNextTetraederAndCube();
+      }
 
       const radius = 15;
       camera.position.x = Math.cos(time * 0.3) * radius;
