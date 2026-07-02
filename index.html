@@ -2,7 +2,7 @@
 <html lang="de">
 <head>
   <meta charset="UTF-8" />
-  <title>Kubus-Kaskade – RVT v16 (korrigiert)</title>
+  <title>Kubus-Kaskade – RVT v16 (Kanten angepasst)</title>
   <style>
     body { margin: 0; overflow: hidden; background: #000; color: #fff; font-family: sans-serif; }
     #info {
@@ -18,7 +18,7 @@
 </head>
 <body>
   <div id="info">
-    Kubus-Kaskade (RVT v16) – korrigiert<br/>
+    Kubus-Kaskade (RVT v16) – Kanten angepasst<br/>
     Ur-Tetraeder mit 6 ungleichen Kanten<br/>
     Öffne die Browser-Konsole für Kantenlängen.
   </div>
@@ -83,13 +83,14 @@
       return ortho.cross(v).normalize();
     }
 
-    // Hilfsfunktion: Kubus entlang einer Kante
-    function createCubeFromEdge(pA, pB, color = 0x3399ff, scale = 1.0) {
-      const edge = new THREE.Vector3().subVectors(
-        new THREE.Vector3(...pB),
-        new THREE.Vector3(...pA)
-      );
-      const length = edge.length() * scale;
+    // Hilfsfunktion: Kubus entlang einer Kante (mit exakter Kantenlänge)
+    function createCubeFromEdge(pA, pB, color = 0x3399ff) {
+      const vA = new THREE.Vector3(...pA);
+      const vB = new THREE.Vector3(...pB);
+      const edge = new THREE.Vector3().subVectors(vB, vA);
+      const length = edge.length();
+
+      // Kubus-Geometrie mit exakter Kantenlänge
       const cubeGeom = new THREE.BoxGeometry(length, length, length);
       const cubeMat = new THREE.MeshPhongMaterial({
         color,
@@ -99,10 +100,7 @@
       const cube = new THREE.Mesh(cubeGeom, cubeMat);
 
       // Mittelpunkt der Kante
-      const mid = new THREE.Vector3()
-        .addVectors(new THREE.Vector3(...pA), new THREE.Vector3(...pB))
-        .multiplyScalar(0.5);
-
+      const mid = new THREE.Vector3().addVectors(vA, vB).multiplyScalar(0.5);
       cube.position.copy(mid);
 
       // Ausrichtung: Kantenrichtung als x-Achse
@@ -154,39 +152,40 @@
       if (step >= edges.length) return;
 
       const [a, b] = edges[step];
-      const cube = createCubeFromEdge(a, b, 0x3399ff, 0.7);
+      const cube = createCubeFromEdge(a, b, 0x3399ff);
       cubes.push(cube);
 
-      // Folge-Tetraeder: Basis-Kante = a–b, restliche Punkte leicht versetzt
-      const baseA = new THREE.Vector3(...a);
-      const baseB = new THREE.Vector3(...b);
-      const axis = new THREE.Vector3().subVectors(baseB, baseA).normalize();
+      // Folge-Tetraeder: Basis-Kante = a–b, restliche Punkte auf der Kubusfläche
+      const vA = new THREE.Vector3(...a);
+      const vB = new THREE.Vector3(...b);
+      const edge = new THREE.Vector3().subVectors(vB, vA);
+      const length = edge.length();
+      const dir = edge.clone().normalize();
 
       // Robuste orthogonale Richtung
-      const normal = getOrthogonalVector(axis);
+      const normal = getOrthogonalVector(dir);
 
-      // Punkt P3' auf einer Parallelfläche
-      const P3p = baseA.clone()
-        .add(axis.clone().multiplyScalar(0.4))
-        .add(normal.clone().multiplyScalar(0.7));
+      // Punkt P3' auf der Kubusfläche (mitte der Kante + normal + nach oben)
+      const mid = new THREE.Vector3().addVectors(vA, vB).multiplyScalar(0.5);
+      const P3p = mid.clone()
+        .add(normal.clone().multiplyScalar(length * 0.5));
 
-      // Punkt P4' „oben“ über der Fläche
-      const P4p = baseA.clone()
-        .add(axis.clone().multiplyScalar(0.2))
-        .add(normal.clone().multiplyScalar(0.3))
-        .add(new THREE.Vector3(0, 0.9, 0));
+      // Punkt P4' auf der gegenüberliegenden Kubusfläche
+      const P4p = mid.clone()
+        .add(normal.clone().multiplyScalar(-length * 0.5))
+        .add(new THREE.Vector3(0, length * 0.5, 0));
 
       const folgeTetra = createTetra(
         [
-          [baseA.x, baseA.y, baseA.z],
-          [baseB.x, baseB.y, baseB.z],
+          [vA.x, vA.y, vA.z],
+          [vB.x, vB.y, vB.z],
           [P3p.x, P3p.y, P3p.z],
           [P4p.x, P4p.y, P4p.z],
         ],
         0x66ff66
       );
 
-      // Dynamische Positionierung basierend auf Schritt und Kantenlänge
+      // Dynamische Positionierung basierend auf Schritt
       const offset = step * 1.5;
       folgeTetra.mesh.position.add(
         new THREE.Vector3(0, 0, offset)
@@ -200,7 +199,7 @@
     spawnNextCubeAndTetra();
 
     // Animation
-    function animate(currentTime) {
+    function animate() {
       requestAnimationFrame(animate);
       time += 0.01;
 
@@ -217,7 +216,7 @@
         cube.rotation.y += 0.01;
       });
 
-      // Alle ~2 Sekunden nächste Generation erzeugen (Frame-unabhängig)
+      // Alle ~2 Sekunden nächste Generation erzeugen
       if (time - lastSpawnTime > 2 && step < edges.length) {
         spawnNextCubeAndTetra();
       }
