@@ -2,7 +2,7 @@
 <html lang="de">
 <head>
   <meta charset="UTF-8" />
-  <title>Kubus-Kaskade – RVT v16 (Volumen-invariante Tetraeder-Kaskade)</title>
+  <title>Kubus-Kaskade – RVT v16 (Kantenbetonte Kaskade)</title>
   <style>
     body { margin: 0; overflow: hidden; background: #000; color: #fff; font-family: sans-serif; }
     #info {
@@ -18,9 +18,9 @@
 </head>
 <body>
   <div id="info">
-    Kubus-Kaskade (RVT v16) – Volumen-invariante Tetraeder-Kaskade<br/>
-    Ur-Tetraeder (gelb) → Kuben (blau) → Folge-Tetraeder (grün) mit gleichem Volumen<br/>
-    Öffne die Browser-Konsole für Kantenlängen und Volumen.
+    Kubus-Kaskade (RVT v16) – Kantenbetonte Kaskade<br/>
+    Ur-Tetraeder (gelb, intransparent) → Kuben (orange, transparent)<br/>
+    Folge-Tetraeder (grün, transparent) aus Kubus-Kanten.
   </div>
 
   <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
@@ -83,8 +83,8 @@
       return ortho.cross(v).normalize();
     }
 
-    // Hilfsfunktion: Kubus entlang einer Kante (mit exakter Kantenlänge)
-    function createCubeFromEdge(pA, pB, color = 0x3399ff) {
+    // Hilfsfunktion: Kubus entlang einer Kante (mit exakter Kantenlänge, nur Kanten sichtbar)
+    function createCubeFromEdge(pA, pB, color = 0xff8800) {
       const vA = new THREE.Vector3(...pA);
       const vB = new THREE.Vector3(...pB);
       const edge = new THREE.Vector3().subVectors(vB, vA);
@@ -92,12 +92,13 @@
 
       // Kubus-Geometrie mit exakter Kantenlänge
       const cubeGeom = new THREE.BoxGeometry(length, length, length);
-      const cubeMat = new THREE.MeshPhongMaterial({
+      const edgesGeom = new THREE.EdgesGeometry(cubeGeom);
+      const cubeMat = new THREE.LineBasicMaterial({
         color,
         transparent: true,
-        opacity: 0.6,
+        opacity: 0.8,
       });
-      const cube = new THREE.Mesh(cubeGeom, cubeMat);
+      const cube = new THREE.LineSegments(edgesGeom, cubeMat);
 
       // Mittelpunkt der Kante
       const mid = new THREE.Vector3().addVectors(vA, vB).multiplyScalar(0.5);
@@ -129,7 +130,7 @@
     const P3 = [1.3, -0.9, -0.6];
     const P4 = [0.4, -0.1, 1.7];
 
-    // Grund-Tetraeder (opaker, um es hervorzuheben)
+    // Grund-Tetraeder (intransparent, gelb)
     const urTetra = createTetra([P1, P2, P3, P4], 0xffcc00, 1.0);
     const urVolume = tetraVolume(
       new THREE.Vector3(...P1),
@@ -158,14 +159,14 @@
       console.log(`Kante ${i+1}: Länge = ${len.toFixed(3)}`);
     });
 
-    // Kuben aus den Kanten des Grund-Tetraeders erstellen
+    // Kuben aus den Kanten des Grund-Tetraeders erstellen (nur Kanten sichtbar, orange, transparent)
     let cubes = [];
     edges.forEach(([a, b], i) => {
-      const cube = createCubeFromEdge(a, b, 0x3399ff);
+      const cube = createCubeFromEdge(a, b, 0xff8800);
       cubes.push(cube);
     });
 
-    // Folge-Tetraeder aus den Kuben erstellen (mit gleichem Volumen wie Ur-Tetraeder)
+    // Folge-Tetraeder aus den Kubus-Kanten erstellen (mit gleichem Volumen wie Ur-Tetraeder)
     let folgeTetraeder = [];
     edges.forEach(([a, b], i) => {
       const vA = new THREE.Vector3(...a);
@@ -178,8 +179,6 @@
       const normal = getOrthogonalVector(dir);
 
       // Punkt P3' und P4' so berechnen, dass das Volumen des Folge-Tetraeders = urVolume
-      // Hier: P3' und P4' werden so platziert, dass das Volumen erhalten bleibt
-      // Vereinfachte Annahme: Höhe des Tetraeders wird angepasst, um das Volumen zu erhalten
       const baseArea = length * length; // Fläche der Basis (Kante a-b als Basis)
       const height = (3 * urVolume) / baseArea; // Höhe für das gewünschte Volumen
 
@@ -188,7 +187,7 @@
       const P3p = mid.clone().add(normal.clone().multiplyScalar(length * 0.5));
       const P4p = mid.clone().add(normal.clone().multiplyScalar(-length * 0.5)).add(new THREE.Vector3(0, height, 0));
 
-      // Folge-Tetraeder erstellen
+      // Folge-Tetraeder erstellen (transparent, grün)
       const folgeTetra = createTetra(
         [
           [vA.x, vA.y, vA.z],
@@ -197,7 +196,7 @@
           [P4p.x, P4p.y, P4p.z],
         ],
         0x66ff66,
-        0.8
+        0.7
       );
       folgeTetraeder.push(folgeTetra);
 
@@ -217,11 +216,6 @@
       camera.position.x = Math.cos(time * 0.3) * radius;
       camera.position.z = Math.sin(time * 0.3) * radius;
       camera.lookAt(0, 0, 0);
-
-      // Kuben leicht rotieren
-      cubes.forEach((cube, i) => {
-        cube.rotation.y += 0.005;
-      });
 
       renderer.render(scene, camera);
     }
