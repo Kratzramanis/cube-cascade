@@ -2,7 +2,7 @@
 <html lang="de">
 <head>
   <meta charset="UTF-8" />
-  <title>Kubus-Kaskade – RVT v16 (Looping Kaskade)</title>
+  <title>Kubus-Kaskade – RVT v16 (RNG nur für 3. Welle)</title>
   <style>
     body { margin: 0; overflow: hidden; background: #000; color: #fff; font-family: sans-serif; }
     #info {
@@ -20,11 +20,12 @@
 </head>
 <body>
   <div id="info">
-    <strong>RVT v16 – Lineare Kanten-Kaskade (Looping)</strong><br/>
-    • 6 Ur-Kanten → 6 individuell skalierte Ur-Kuben (komplementär, transparent 0.3)<br/>
-    • Äußere Kubus-Kante → 6 Folge-Tetraeder (grün, Volumen-Invarianz: Aktiv)<br/>
-    • Äußerste Tetraeder-Kante → 6 Folge-Kuben Gen 2 (blau, transparent 0.3)<br/>
-    • <em>Automatischer Reset nach vollständigem Durchlauf</em>
+    <strong>RVT v16 – RNG nur für 3. Welle</strong><br/>
+    • Ur-Tetraeder (weiß, intransparent)<br/>
+    • 6 orange Kuben (transparent 0.3)<br/>
+    • 6 grüne Tetraeder (transparent 0.5)<br/>
+    • 6 rote Kuben (intransparent)<br/>
+    • 3. Welle: RNG-Färbung (intransparent)
   </div>
 
   <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
@@ -50,8 +51,13 @@
     let time = 0;
     let lastExecutionTime = 0;
     let resetTimer = null;
+    let cycleCount = 0;
 
-    function createTetraMesh(points, color, opacity) {
+    function getRandomColor() {
+      return Math.floor(Math.random() * 0xffffff);
+    }
+
+    function createTetraMesh(points, color, opacity = 1.0) {
       const geom = new THREE.BufferGeometry();
       const vertices = new Float32Array([
         ...points[0], ...points[1], ...points[2],
@@ -62,7 +68,7 @@
       geom.setAttribute('position', new THREE.BufferAttribute(vertices, 3));
       geom.computeVertexNormals();
       const mat = new THREE.MeshPhongMaterial({
-        color, transparent: true, opacity, side: THREE.DoubleSide, depthWrite: false
+        color, transparent: opacity < 1.0, opacity, side: THREE.DoubleSide
       });
       const mesh = new THREE.Mesh(geom, mat);
       scene.add(mesh);
@@ -85,7 +91,16 @@
       return Math.abs(ab.dot(ac.cross(ad))) / 6;
     }
 
-    function buildCubeOnEdge(pA, pB, colorRGB) {
+    function generateNewTetraEdges() {
+      const newEdges = [];
+      const baseLength = 1.0 + Math.random() * 0.5;
+      for (let i = 0; i < 6; i++) {
+        newEdges.push(baseLength + (Math.random() * 0.3 - 0.15));
+      }
+      return newEdges;
+    }
+
+    function buildCubeOnEdge(pA, pB, colorRGB, opacity = 1.0) {
       const edgeVec = new THREE.Vector3().subVectors(pB, pA);
       const length = edgeVec.length();
       const dir = edgeVec.clone().normalize();
@@ -95,7 +110,7 @@
 
       const geom = new THREE.BoxGeometry(length, length, length);
       const mat = new THREE.MeshPhongMaterial({
-        color: colorRGB, transparent: true, opacity: 0.3, depthWrite: false
+        color: colorRGB, transparent: opacity < 1.0, opacity
       });
       const cube = new THREE.Mesh(geom, mat);
 
@@ -118,28 +133,35 @@
       return { outerA, outerB, length, dir, ortho1, ortho2 };
     }
 
-    const P1 = [0.0, 1.4, 0.2];
-    const P2 = [-1.6, -0.5, 0.1];
-    const P3 = [1.3, -0.9, -0.6];
-    const P4 = [0.4, -0.1, 1.7];
-
-    const vP1 = new THREE.Vector3(...P1);
-    const vP2 = new THREE.Vector3(...P2);
-    const vP3 = new THREE.Vector3(...P3);
-    const vP4 = new THREE.Vector3(...P4);
-
-    const urEdges = [
-      [vP1, vP2], [vP1, vP3], [vP1, vP4],
-      [vP2, vP3], [vP2, vP4], [vP3, vP4]
-    ];
-
-    const urVolume = tetraVolume(vP1, vP2, vP3, vP4);
-
     function initCascade() {
       dynamicMeshes.forEach(mesh => { scene.remove(mesh); mesh.geometry.dispose(); mesh.material.dispose(); });
       dynamicMeshes = [];
       animationQueue = [];
       resetTimer = null;
+
+      cycleCount++;
+
+      let P1, P2, P3, P4;
+      if (cycleCount === 1) {
+        P1 = [0.0, 1.4, 0.2];
+        P2 = [-1.6, -0.5, 0.1];
+        P3 = [1.3, -0.9, -0.6];
+        P4 = [0.4, -0.1, 1.7];
+      } else {
+        const newEdges = generateNewTetraEdges();
+        P1 = [0, 0, 0];
+        P2 = [newEdges[0], 0, 0];
+        P3 = [newEdges[1] * Math.cos(Math.PI/3), newEdges[1] * Math.sin(Math.PI/3), 0];
+        P4 = [0, newEdges[2], newEdges[3]];
+      }
+
+      const vP1 = new THREE.Vector3(...P1);
+      const vP2 = new THREE.Vector3(...P2);
+      const vP3 = new THREE.Vector3(...P3);
+      const vP4 = new THREE.Vector3(...P4);
+
+      const urVolume = tetraVolume(vP1, vP2, vP3, vP4);
+      console.log(`Zyklus ${cycleCount}: Ur-Volumen = ${urVolume.toFixed(3)}`);
 
       const geom = new THREE.BufferGeometry();
       const vertices = new Float32Array([
@@ -150,13 +172,18 @@
       ]);
       geom.setAttribute('position', new THREE.BufferAttribute(vertices, 3));
       geom.computeVertexNormals();
-      const mat = new THREE.MeshPhongMaterial({ color: 0xffffff, transparent: true, opacity: 1.0, side: THREE.DoubleSide });
+      const mat = new THREE.MeshPhongMaterial({ color: 0xffffff, transparent: false, opacity: 1.0, side: THREE.DoubleSide });
       const urMesh = new THREE.Mesh(geom, mat);
       scene.add(urMesh);
       dynamicMeshes.push(urMesh);
 
+      const urEdges = [
+        [vP1, vP2], [vP1, vP3], [vP1, vP4],
+        [vP2, vP3], [vP2, vP4], [vP3, vP4]
+      ];
+
       urEdges.forEach((edge, index) => {
-        animationQueue.push({ type: 'CUBE_GEN1', edgeIndex: index, data: { a: edge[0], b: edge[1] } });
+        animationQueue.push({ type: 'CUBE_GEN1', edgeIndex: index, data: { a: edge[0], b: edge[1], volume: urVolume } });
       });
     }
 
@@ -165,8 +192,8 @@
       const step = animationQueue.shift();
 
       if (step.type === 'CUBE_GEN1') {
-        const cubeData = buildCubeOnEdge(step.data.a, step.data.b, 0x00ffaa);
-        animationQueue.push({ type: 'TETRA_GEN2', edgeIndex: step.edgeIndex, data: cubeData });
+        const cubeData = buildCubeOnEdge(step.data.a, step.data.b, 0xff8800, 0.3);
+        animationQueue.push({ type: 'TETRA_GEN2', edgeIndex: step.edgeIndex, data: { ...cubeData, volume: step.data.volume } });
 
       } else if (step.type === 'TETRA_GEN2') {
         const cD = step.data;
@@ -174,7 +201,7 @@
         const d1 = cD.length * stretchFactor;
         
         const tetraP3 = cD.outerA.clone().addScaledVector(cD.dir, cD.length / 2).addScaledVector(cD.ortho1, d1);
-        const height = (6 * urVolume) / (cD.length * d1);
+        const height = (6 * cD.volume) / (cD.length * d1);
         const tetraP4 = cD.outerA.clone().addScaledVector(cD.dir, cD.length / 2).addScaledVector(cD.ortho2, height);
 
         createTetraMesh([
@@ -182,12 +209,31 @@
           [cD.outerB.x, cD.outerB.y, cD.outerB.z],
           [tetraP3.x, tetraP3.y, tetraP3.z],
           [tetraP4.x, tetraP4.y, tetraP4.z]
-        ], 0x66ff66, 0.6);
+        ], 0x00ff00, 0.5);
 
-        animationQueue.push({ type: 'CUBE_GEN2', edgeIndex: step.edgeIndex, data: { a: tetraP3, b: tetraP4 } });
+        animationQueue.push({ type: 'CUBE_GEN2', edgeIndex: step.edgeIndex, data: { a: tetraP3, b: tetraP4, volume: cD.volume } });
 
       } else if (step.type === 'CUBE_GEN2') {
-        buildCubeOnEdge(step.data.a, step.data.b, 0x0088ff);
+        const cubeData = buildCubeOnEdge(step.data.a, step.data.b, 0xff4444, 1.0);
+        animationQueue.push({ type: 'TETRA_GEN3', edgeIndex: step.edgeIndex, data: { ...cubeData, volume: step.data.volume } });
+      }
+      else if (step.type === 'TETRA_GEN3') {
+        const cD = step.data;
+        const stretchFactor = 1.2;
+        const d1 = cD.length * stretchFactor;
+        
+        const tetraP3 = cD.outerA.clone().addScaledVector(cD.dir, cD.length / 2).addScaledVector(cD.ortho1, d1);
+        const height = (6 * cD.volume) / (cD.length * d1);
+        const tetraP4 = cD.outerA.clone().addScaledVector(cD.dir, cD.length / 2).addScaledVector(cD.ortho2, height);
+
+        createTetraMesh([
+          [cD.outerA.x, cD.outerA.y, cD.outerA.z],
+          [cD.outerB.x, cD.outerB.y, cD.outerB.z],
+          [tetraP3.x, tetraP3.y, tetraP3.z],
+          [tetraP4.x, tetraP4.y, tetraP4.z]
+        ], getRandomColor(), 1.0);
+        
+        const cubeData = buildCubeOnEdge(tetraP3, tetraP4, getRandomColor(), 1.0);
       }
     }
 
@@ -196,7 +242,7 @@
       requestAnimationFrame(animate);
       time += 0.01;
 
-      if (time - lastExecutionTime > 0.3) {
+      if (time - lastExecutionTime > 0.6) {
         if (animationQueue.length > 0) {
           executeNextCascadeStep();
           lastExecutionTime = time;
