@@ -14,3 +14,13 @@ The Core Cryptographic Principle of RVT v16:
     "The cryptographic key is neither a specific color nor a single edge. The key is the absolute volume condition under which all subsequent edges in the three-dimensional space are physically forced to reorganize themselves."
 
 By mapping the resulting continuous geometric metrics (edge lengths, spatial angles, normal vectors, and deviation colors) to a quantized bitstream, RVT v16 provides the architectural blueprint for a spatial-geometric hash function or key exchange protocol, in which combinatorial predictability (homogeneity) is structurally forbidden.
+
+Analog Space-Vector Modulation: A Continuous Cryptographic Framework
+
+Unlike classical binary encryption methods, the RVT v16 cascade does not need to be quantized into a discrete bitstream. The invariant volume ($V_{Key}$) serves directly as a continuous master key that dictates the edge lengths, spatial angles, and heights of all subsequent tetrahedra via the recursive relation:
+
+$$h_n = \frac{6V_{Key}}{L_n d_n}$$
+
+These emerging geometric metrics can be directly mapped to analog pulse parameters—such as amplitude, phase, pulse width, or time shift. Therefore, the encryption is not achieved through a discrete 0/1 binary mapping, but rather through a continuous, volume-bound 3D modulation. The structural propagation relies on the deviation edge (alternating color states) which acts as an analog trajectory generator rather than a mere binary switch.
+
+Digital quantization (e.g., bitstream generation) is merely a possible technical interface, not the mathematical foundation of this methodology. RVT v16 fundamentally provides a continuous geometric carrier space rather than a simple digital keystream. The initial key is the absolute volume constraint; the encryption is the analog drift of the edge cascade, recursively enforced by this strict volume invariance.
