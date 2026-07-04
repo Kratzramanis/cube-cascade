@@ -2,7 +2,7 @@
 <html lang="de">
 <head>
   <meta charset="UTF-8" />
-  <title>Kubus-Kaskade – RVT v16 (Vollständige Außen-Rekursion)</title>
+  <title>Kubus-Kaskade – RVT v16 (Echte Flach-Scherung & Farb-Umschlüsselung)</title>
   <style>
     body { margin: 0; overflow: hidden; background: #000; color: #fff; font-family: sans-serif; }
     #info {
@@ -20,12 +20,10 @@
 </head>
 <body>
   <div id="info">
-    <strong>RVT v16 – Vollständige Rekursion nach AUSSEN</strong><br/>
-    • Welle 1: Ur-Tetraeder (weiß) -> Kuben G1 (orange, transparent 0.3)<br/>
-    • Welle 2: Tetraeder G2 (grün, transparent 0.5) -> Kuben G2 (rot, intransparent)<br/>
-    • Welle 3: Tetraeder G3 (RNG) -> Kuben G3 (RNG)<br/>
-    • Welle 4: Tetraeder G4 (RNG) -> Kuben G4 (RNG)<br/>
-    • Alle Generationen erzwingen radiale Außenrichtung via Schwerpunktabgleich
+    <strong>RVT v16 – Farb- & Scherungs-Kalibrierung</strong><br/>
+    • Tetraeder Gen 2: Grün | Gen 3 & 4: Übersetzte Grüntöne<br/>
+    • Kuben ab Gen 3: **Absolutes RNG-Farbspektrum**<br/>
+    • **Scherung:** Spitzenpunkt $P_4$ flach im echten 45°-Winkel über der Kubusfläche fixiert.
   </div>
 
   <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
@@ -34,15 +32,15 @@
     scene.background = new THREE.Color(0x020208);
 
     const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 1000);
-    camera.position.set(0, 4, 25);
+    camera.position.set(0, 5, 30);
 
     const renderer = new THREE.WebGLRenderer({ antialias: true });
     renderer.setSize(window.innerWidth, window.innerHeight);
     document.body.appendChild(renderer.domElement);
 
-    const ambient = new THREE.AmbientLight(0xffffff, 0.5);
+    const ambient = new THREE.AmbientLight(0xffffff, 0.6);
     scene.add(ambient);
-    const dirLight = new THREE.DirectionalLight(0xffffff, 0.9);
+    const dirLight = new THREE.DirectionalLight(0xffffff, 0.8);
     dirLight.position.set(10, 20, 15);
     scene.add(dirLight);
 
@@ -52,6 +50,7 @@
     let lastExecutionTime = 0;
     let resetTimer = null;
     let cycleCount = 0;
+    let targetUrVolume = null;
 
     function getRandomColor() {
       return Math.floor(Math.random() * 0xffffff);
@@ -95,15 +94,6 @@
       return Math.abs(ab.dot(ac.cross(ad))) / 6;
     }
 
-    function generateNewTetraEdges() {
-      const newEdges = [];
-      const baseLength = 1.0 + Math.random() * 0.5;
-      for (let i = 0; i < 6; i++) {
-        newEdges.push(baseLength + (Math.random() * 0.3 - 0.15));
-      }
-      return newEdges;
-    }
-
     function buildCubeOnEdge(pA, pB, parentCentroid, colorRGB, opacity = 1.0) {
       const edgeVec = new THREE.Vector3().subVectors(pB, pA);
       const length = edgeVec.length();
@@ -145,34 +135,58 @@
       return { outerA, outerB, length, dir, ortho1, ortho2, cubeCenter };
     }
 
-    function buildTetraOnCube(cD, volume, colorRGB, opacity = 1.0, stretchFactor = 1.3) {
-      const d1 = cD.length * stretchFactor;
+    function buildTetraOnCube(cD, volume, colorRGB, opacity = 1.0, stretchFactor = 1.35, breakAllEdges = false) {
+      let currentOuterA = cD.outerA.clone();
+      let currentOuterB = cD.outerB.clone();
+      let currentLength = cD.length;
+
+      if (breakAllEdges) {
+        const edgeScaleFactor = 1.18; 
+        currentLength = cD.length * edgeScaleFactor;
+        const midOuter = new THREE.Vector3().addVectors(cD.outerA, cD.outerB).multiplyScalar(0.5);
+        currentOuterA = midOuter.clone().addScaledVector(cD.dir, -currentLength / 2);
+        currentOuterB = midOuter.clone().addScaledVector(cD.dir, currentLength / 2);
+      }
+
+      const d1 = currentLength * stretchFactor;
       
-      let tetraP3 = cD.outerA.clone().addScaledVector(cD.dir, cD.length / 2).addScaledVector(cD.ortho1, d1);
-      const height = (6 * volume) / (cD.length * d1);
-      let tetraP4 = cD.outerA.clone().addScaledVector(cD.dir, cD.length / 2).addScaledVector(cD.ortho2, height);
+      const midOuterCurrent = new THREE.Vector3().addVectors(currentOuterA, currentOuterB).multiplyScalar(0.5);
+      const toCubeCenter = new THREE.Vector3().subVectors(cD.cubeCenter, midOuterCurrent);
 
-      const midOuter = new THREE.Vector3().addVectors(cD.outerA, cD.outerB).multiplyScalar(0.5);
-      const toCubeCenter = new THREE.Vector3().subVectors(cD.cubeCenter, midOuter);
+      let ortho1Dir = cD.ortho1.clone();
+      let tetraP3_test = currentOuterA.clone().addScaledVector(cD.dir, currentLength / 2).addScaledVector(ortho1Dir, d1);
+      if (new THREE.Vector3().subVectors(tetraP3_test, midOuterCurrent).dot(toCubeCenter) > 0) {
+        ortho1Dir.multiplyScalar(-1);
+      }
+      let tetraP3 = currentOuterA.clone().addScaledVector(cD.dir, currentLength / 2).addScaledVector(ortho1Dir, d1);
 
-      // KORREKTUR: Variablen definiert BEVOR sie in der Punktrichtung geprüft werden
-      const vecP3 = new THREE.Vector3().subVectors(tetraP3, midOuter);
-      if (vecP3.dot(toCubeCenter) > 0) {
-        tetraP3 = cD.outerA.clone().addScaledVector(cD.dir, cD.length / 2).addScaledVector(cD.ortho1, -d1);
+      let ortho2Dir = cD.ortho2.clone();
+      let tetraP4_test = currentOuterA.clone().addScaledVector(cD.dir, currentLength / 2).addScaledVector(ortho2Dir, 1.0);
+      if (new THREE.Vector3().subVectors(tetraP4_test, midOuterCurrent).dot(toCubeCenter) > 0) {
+        ortho2Dir.multiplyScalar(-1);
       }
-      const vecP4 = new THREE.Vector3().subVectors(tetraP4, midOuter);
-      if (vecP4.dot(toCubeCenter) > 0) {
-        tetraP4 = cD.outerA.clone().addScaledVector(cD.dir, cD.length / 2).addScaledVector(cD.ortho2, -height);
-      }
+
+      // Volumen-Grundformel
+      let height = (6 * volume) / (currentLength * d1);
+      
+      // ECHTE 45° NEIGUNG: Wir nehmen den exakten Richtungsvektor nach oben (ortho2Dir) und kippen ihn 
+      // durch eine präzise lineare Addition der Flächen-Achse (ortho1Dir) um exakt 45 Grad flach nach unten.
+      let heightDir = new THREE.Vector3().addVectors(ortho2Dir, ortho1Dir).normalize();
+      
+      // Da der Vektor nun schräg steht, dehnen wir die projizierte Höhe um Wurzel 2 aus,
+      // damit der senkrechte Abstand zur Grundfläche absolut formtreu das Volumen bewahrt.
+      let adjustedHeight = height * Math.sqrt(2);
+
+      let tetraP4 = currentOuterA.clone().addScaledVector(cD.dir, currentLength / 2).addScaledVector(heightDir, adjustedHeight);
 
       createTetraMesh([
-        [cD.outerA.x, cD.outerA.y, cD.outerA.z],
-        [cD.outerB.x, cD.outerB.y, cD.outerB.z],
+        [currentOuterA.x, currentOuterA.y, currentOuterA.z],
+        [currentOuterB.x, currentOuterB.y, currentOuterB.z],
         [tetraP3.x, tetraP3.y, tetraP3.z],
         [tetraP4.x, tetraP4.y, tetraP4.z]
       ], colorRGB, opacity);
 
-      const nextCentroid = getCentroid(cD.outerA, cD.outerB, tetraP3, tetraP4);
+      const nextCentroid = getCentroid(currentOuterA, currentOuterB, tetraP3, tetraP4);
 
       return { tetraP3, tetraP4, nextCentroid };
     }
@@ -185,30 +199,40 @@
 
       cycleCount++;
 
-      let P1, P2, P3, P4;
+      let vP1, vP2, vP3, vP4;
+
       if (cycleCount === 1) {
-        P1 = [0.0, 1.4, 0.2];
-        P2 = [-1.6, -0.5, 0.1];
-        P3 = [1.3, -0.9, -0.6];
-        P4 = [0.4, -0.1, 1.7];
+        vP1 = new THREE.Vector3(0.0, 1.4, 0.2);
+        vP2 = new THREE.Vector3(-1.6, -0.5, 0.1);
+        vP3 = new THREE.Vector3(1.3, -0.9, -0.6);
+        vP4 = new THREE.Vector3(0.4, -0.1, 1.7);
+        targetUrVolume = tetraVolume(vP1, vP2, vP3, vP4);
       } else {
-        const newEdges = generateNewTetraEdges();
-        P1 = [0, 0, 0];
-        P2 = [newEdges[0], 0, 0];
-        P3 = [newEdges[1] * Math.cos(Math.PI/3), newEdges[1] * Math.sin(Math.PI/3), 0];
-        P4 = [0, newEdges[2], newEdges[3]];
+        const rL1 = 1.5 + Math.random() * 1.5;
+        const rL2 = 1.5 + Math.random() * 1.5;
+        const angle = (Math.PI / 6) + Math.random() * (Math.PI / 3);
+
+        vP1 = new THREE.Vector3(0, 0, 0);
+        vP2 = new THREE.Vector3(rL1, 0, 0);
+        vP3 = new THREE.Vector3(rL2 * Math.cos(angle), rL2 * Math.sin(angle), Math.random() * 0.5 - 0.25);
+
+        const baseTriangleArea = new THREE.Vector3().crossVectors(
+          new THREE.Vector3().subVectors(vP2, vP1),
+          new THREE.Vector3().subVectors(vP3, vP1)
+        ).length() * 0.5;
+
+        const exactHeight = (3 * targetUrVolume) / baseTriangleArea;
+        const normalDir = new THREE.Vector3().crossVectors(
+          new THREE.Vector3().subVectors(vP2, vP1),
+          new THREE.Vector3().subVectors(vP3, vP1)
+        ).normalize();
+
+        const midBase = new THREE.Vector3().add(vP1).add(vP2).add(vP3).multiplyScalar(1/3);
+        vP4 = midBase.clone().addScaledVector(normalDir, exactHeight);
       }
 
-      const vP1 = new THREE.Vector3(...P1);
-      const vP2 = new THREE.Vector3(...P2);
-      const vP3 = new THREE.Vector3(...P3);
-      const vP4 = new THREE.Vector3(...P4);
-
       const urCentroid = getCentroid(vP1, vP2, vP3, vP4);
-      const urVolume = tetraVolume(vP1, vP2, vP3, vP4);
-      console.log(`Zyklus ${cycleCount}: Ur-Volumen = ${urVolume.toFixed(3)}`);
-
-      createTetraMesh([P1, P2, P3, P4], 0xffffff, 1.0);
+      createTetraMesh([[vP1.x, vP1.y, vP1.z], [vP2.x, vP2.y, vP2.z], [vP3.x, vP3.y, vP3.z], [vP4.x, vP4.y, vP4.z]], 0xffffff, 1.0);
 
       const urEdges = [
         [vP1, vP2], [vP1, vP3], [vP1, vP4],
@@ -216,7 +240,7 @@
       ];
 
       urEdges.forEach((edge, index) => {
-        animationQueue.push({ type: 'CUBE_GEN1', edgeIndex: index, data: { a: edge[0], b: edge[1], volume: urVolume, parentCentroid: urCentroid.clone() } });
+        animationQueue.push({ type: 'CUBE_GEN1', edgeIndex: index, data: { a: edge[0], b: edge[1], volume: targetUrVolume, parentCentroid: urCentroid.clone() } });
       });
     }
 
@@ -229,27 +253,33 @@
         animationQueue.push({ type: 'TETRA_GEN2', edgeIndex: step.edgeIndex, data: { cubeData, volume: step.data.volume } });
 
       } else if (step.type === 'TETRA_GEN2') {
-        const tetraData = buildTetraOnCube(step.data.cubeData, step.data.volume, 0x00ff00, 0.5, 1.3);
+        // Gen 2 Tetraeder: Reines Grün
+        const tetraData = buildTetraOnCube(step.data.cubeData, step.data.volume, 0x00ff66, 0.6, 1.35, false);
         animationQueue.push({ type: 'CUBE_GEN2', edgeIndex: step.edgeIndex, data: { a: tetraData.tetraP3, b: tetraData.tetraP4, volume: step.data.volume, parentCentroid: tetraData.nextCentroid } });
 
       } else if (step.type === 'CUBE_GEN2') {
-        const cubeData = buildCubeOnEdge(step.data.a, step.data.b, step.data.parentCentroid, 0xff4444, 1.0);
+        // Gen 2 Kubus: Orange/Rot-Kombination fest
+        const cubeData = buildCubeOnEdge(step.data.a, step.data.b, step.data.parentCentroid, 0xff4444, 0.6);
         animationQueue.push({ type: 'TETRA_GEN3', edgeIndex: step.edgeIndex, data: { cubeData, volume: step.data.volume } });
 
       } else if (step.type === 'TETRA_GEN3') {
-        const tetraData = buildTetraOnCube(step.data.cubeData, step.data.volume, getRandomColor(), 1.0, 1.2);
+        // Gen 3 Tetraeder: Übersetztes Grün (Cyan-Nuance)
+        const tetraData = buildTetraOnCube(step.data.cubeData, step.data.volume, 0x00ffcc, 0.8, 1.2, true);
         animationQueue.push({ type: 'CUBE_GEN3', edgeIndex: step.edgeIndex, data: { a: tetraData.tetraP3, b: tetraData.tetraP4, volume: step.data.volume, parentCentroid: tetraData.nextCentroid } });
 
       } else if (step.type === 'CUBE_GEN3') {
-        const cubeData = buildCubeOnEdge(step.data.a, step.data.b, step.data.parentCentroid, getRandomColor(), 1.0);
+        // Kubus ab Gen 3: Absolutes RNG Farb-Protokoll!
+        const cubeData = buildCubeOnEdge(step.data.a, step.data.b, step.data.parentCentroid, getRandomColor(), 0.7);
         animationQueue.push({ type: 'TETRA_GEN4', edgeIndex: step.edgeIndex, data: { cubeData, volume: step.data.volume } });
 
       } else if (step.type === 'TETRA_GEN4') {
-        const tetraData = buildTetraOnCube(step.data.cubeData, step.data.volume, getRandomColor(), 1.0, 1.15);
+        // Gen 4 Tetraeder: Übersetztes Grün (Smaragd-Nuance)
+        const tetraData = buildTetraOnCube(step.data.cubeData, step.data.volume, 0x00cc44, 1.0, 1.15, true);
         animationQueue.push({ type: 'CUBE_GEN4', edgeIndex: step.edgeIndex, data: { a: tetraData.tetraP3, b: tetraData.tetraP4, volume: step.data.volume, parentCentroid: tetraData.nextCentroid } });
 
       } else if (step.type === 'CUBE_GEN4') {
-        buildCubeOnEdge(step.data.a, step.data.b, step.data.parentCentroid, getRandomColor(), 1.0);
+        // Kubus Gen 4: Ebenfalls RNG Farb-Protokoll!
+        buildCubeOnEdge(step.data.a, step.data.b, step.data.parentCentroid, getRandomColor(), 0.8);
       }
     }
 
@@ -272,9 +302,9 @@
         }
       }
 
-      const radius = 28;
-      camera.position.x = Math.cos(time * 0.3) * radius;
-      camera.position.z = Math.sin(time * 0.3) * radius;
+      const radius = 38; 
+      camera.position.x = Math.cos(time * 0.12) * radius;
+      camera.position.z = Math.sin(time * 0.12) * radius;
       camera.lookAt(0, 0, 0);
 
       renderer.render(scene, camera);
