@@ -2,7 +2,7 @@
 <html lang="de">
 <head>
   <meta charset="UTF-8" />
-  <title>Kubus-Kaskade – RVT v16 (3x Rotation & 1.5s Takt)</title>
+  <title>Kubus-Kaskade – RVT v16 (Abweichungskanten-Logik)</title>
   <style>
     body { margin: 0; overflow: hidden; background: #000; color: #fff; font-family: sans-serif; }
     #info {
@@ -24,7 +24,7 @@
     <strong>RVT v16 – Beschleunigtes Bezugssystem</strong><br/>
     • Taktung: Exakt 1,5 Sekunden pro Einzelelement.<br/>
     • Rotation: 3-fache Geschwindigkeit (Dynamischer Orbit).<br/>
-    • Zoom-Kurve: Gedämpfter Übergang (Radius 6 -> 320) verlangsamt im Zentrum.
+    • Farblogik: Fraktale Varianz über Abweichungskanten (Rot-Basis wählt Blaue Kante für neuen Kubus).
   </div>
 
   <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
@@ -58,18 +58,37 @@
     let timeSinceLastStep = 0;
     let timeSinceBuildEnd = 0;
     
-    // Dimis exakte Vorgaben: 1,5 Sekunden pro Element
     const ELEMENT_STEP_DURATION = 1.5; 
     const totalStepsInCycle = 54; 
     const TOTAL_BUILD_DURATION = totalStepsInCycle * ELEMENT_STEP_DURATION; 
 
     const resetTimer = 15.0;       
 
+    // RVT v16 Kanten-Logik:
+    // Kante 2-3 ist die Basis-Kante (vom Vorgänger-Kubus)
+    // Kante 0-1 ist die Abweichungs-Kante (wird für den neuen Kubus genutzt)
     function generateTetraEdgeColors(baseEdgeColor) {
       if (baseEdgeColor === 0xff0000) {
-        return { "0-1": 0xff0000, "0-2": 0x0000ff, "1-2": 0xff0000, "0-3": 0x0000ff, "1-3": 0x0000ff, "2-3": 0xff0000 };
+        // Basis ist ROT. Abweichungskante für neuen Kubus muss BLAU sein.
+        // Keine der 4 Flächen darf monochrom werden!
+        return { 
+          "0-1": 0x0000ff, // Abweichungskante (Blau) -> Hier wächst der neue Kubus
+          "0-2": 0x0000ff, 
+          "1-2": 0xff0000, 
+          "0-3": 0xff0000, 
+          "1-3": 0x0000ff, 
+          "2-3": 0xff0000  // Basis-Kante (Rot)
+        };
       } else {
-        return { "0-1": 0x0000ff, "0-2": 0xff0000, "1-2": 0x0000ff, "0-3": 0xff0000, "1-3": 0xff0000, "2-3": 0x0000ff };
+        // Basis ist BLAU. Abweichungskante für neuen Kubus muss ROT sein.
+        return { 
+          "0-1": 0xff0000, // Abweichungskante (Rot) -> Hier wächst der neue Kubus
+          "0-2": 0xff0000, 
+          "1-2": 0x0000ff, 
+          "0-3": 0x0000ff, 
+          "1-3": 0xff0000, 
+          "2-3": 0x0000ff  // Basis-Kante (Blau)
+        };
       }
     }
 
@@ -203,6 +222,8 @@
       const vP4 = new THREE.Vector3(...P4);
 
       const urVolume = tetraVolume(vP1, vP2, vP3, vP4);
+      
+      // Das Ur-Tetraeder startet mit einer gemischten Basisstruktur
       const initialMap = createColoredTetra([P1, P2, P3, P4], 0xff0000, 0.5);
 
       const faces = [
@@ -231,12 +252,13 @@
         const va = new THREE.Vector3().subVectors(targetFace.pts[1], targetFace.pts[0]);
         const vb = new THREE.Vector3().subVectors(targetFace.pts[2], targetFace.pts[0]);
         const normal = new THREE.Vector3().crossVectors(va, vb).normalize();
+        
         const kantenFarbe = initialMap[edge.key];
 
         animationQueue.push({ 
           type: 'CUBE_GEN1', 
           edgeIndex: index, 
-          data: { a: edge.pts[0], b: edge.pts[1], volume: urVolume, normal: normal, color: kantenFarbe, historyColor: kantenFarbe } 
+          data: { a: edge.pts[0], b: edge.pts[1], volume: urVolume, normal: normal, color: kantenFarbe } 
         });
       });
 
@@ -249,7 +271,7 @@
 
       if (step.type === 'CUBE_GEN1') {
         const cubeData = buildCubeOnEdgeAligned(step.data.a, step.data.b, step.data.normal, step.data.color, 0.45, false);
-        animationQueue.push({ type: 'TETRA_GEN2', edgeIndex: step.edgeIndex, data: { ...cubeData, volume: step.data.volume, color: step.data.color, historyColor: step.data.historyColor } });
+        animationQueue.push({ type: 'TETRA_GEN2', edgeIndex: step.edgeIndex, data: { ...cubeData, volume: step.data.volume, color: step.data.color } });
 
       } else if (step.type === 'TETRA_GEN2') {
         const cD = step.data;
@@ -260,15 +282,17 @@
         const height = (6 * cD.volume) / (cD.length * d1);
         const tetraP4 = cD.outerA.clone().addScaledVector(cD.dir, cD.length / 2).addScaledVector(vec45_B, height);
 
-        const gen2Map = createColoredTetra([[tetraP3.x, tetraP3.y, tetraP3.z], [tetraP4.x, tetraP4.y, tetraP4.z], [cD.outerA.x, cD.outerA.y, cD.outerA.z], [cD.outerB.x, cD.outerB.y, cD.outerB.z]], cD.color, 0.35);
-        let nextCubeColor = gen2Map["0-1"];
-        if (nextCubeColor === cD.historyColor) nextCubeColor = (nextCubeColor === 0xff0000) ? 0x0000ff : 0xff0000;
+        // Das neue Tetraeder baut sein gemischtes Kantennetz auf Basis der Grundkante auf
+        createColoredTetra([[tetraP3.x, tetraP3.y, tetraP3.z], [tetraP4.x, tetraP4.y, tetraP4.z], [cD.outerA.x, cD.outerA.y, cD.outerA.z], [cD.outerB.x, cD.outerB.y, cD.outerB.z]], cD.color, 0.35);
+        
+        // Die Abweichungskante für den nächsten Kubus ist zwingend die Gegenfarbe der Basis
+        let nextCubeColor = (cD.color === 0xff0000) ? 0x0000ff : 0xff0000;
 
-        animationQueue.push({ type: 'CUBE_GEN2', edgeIndex: step.edgeIndex, data: { a: tetraP3, b: tetraP4, volume: cD.volume, normal: vec45_A, color: nextCubeColor, historyColor: cD.color } });
+        animationQueue.push({ type: 'CUBE_GEN2', edgeIndex: step.edgeIndex, data: { a: tetraP3, b: tetraP4, volume: cD.volume, normal: vec45_A, color: nextCubeColor } });
 
       } else if (step.type === 'CUBE_GEN2') {
         const cubeData = buildCubeOnEdgeAligned(step.data.a, step.data.b, step.data.normal, step.data.color, 0.5, true);
-        animationQueue.push({ type: 'TETRA_GEN3', edgeIndex: step.edgeIndex, data: { ...cubeData, volume: step.data.volume, color: step.data.color, historyColor: step.data.historyColor } });
+        animationQueue.push({ type: 'TETRA_GEN3', edgeIndex: step.edgeIndex, data: { ...cubeData, volume: step.data.volume, color: step.data.color } });
 
       } else if (step.type === 'TETRA_GEN3') {
         const cD = step.data;
@@ -279,15 +303,14 @@
         const height = (6 * cD.volume) / (cD.length * d1);
         const tetraP4 = cD.outerA.clone().addScaledVector(cD.dir, cD.length / 2).addScaledVector(vec45_B, height);
 
-        const gen3Map = createColoredTetra([[tetraP3.x, tetraP3.y, tetraP3.z], [tetraP4.x, tetraP4.y, tetraP4.z], [cD.outerA.x, cD.outerA.y, cD.outerA.z], [cD.outerB.x, cD.outerB.y, cD.outerB.z]], cD.color, 0.3);
-        let nextCubeColor = gen3Map["0-1"];
-        if (nextCubeColor === cD.historyColor) nextCubeColor = (nextCubeColor === 0xff0000) ? 0x0000ff : 0xff0000;
-
-        animationQueue.push({ type: 'CUBE_GEN3', edgeIndex: step.edgeIndex, data: { a: tetraP3, b: tetraP4, volume: cD.volume, normal: vec45_A, color: nextCubeColor, historyColor: cD.color } });
+        createColoredTetra([[tetraP3.x, tetraP3.y, tetraP3.z], [tetraP4.x, tetraP4.y, tetraP4.z], [cD.outerA.x, cD.outerA.y, cD.outerA.z], [cD.outerB.x, cD.outerB.y, cD.outerB.z]], cD.color, 0.3);
+        
+        let nextCubeColor = (cD.color === 0xff0000) ? 0x0000ff : 0xff0000;
+        animationQueue.push({ type: 'CUBE_GEN3', edgeIndex: step.edgeIndex, data: { a: tetraP3, b: tetraP4, volume: cD.volume, normal: vec45_A, color: nextCubeColor } });
 
       } else if (step.type === 'CUBE_GEN3') {
         const cubeData = buildCubeOnEdgeAligned(step.data.a, step.data.b, step.data.normal, step.data.color, 0.55, true);
-        animationQueue.push({ type: 'TETRA_GEN4', edgeIndex: step.edgeIndex, data: { ...cubeData, volume: step.data.volume, color: step.data.color, historyColor: step.data.historyColor } });
+        animationQueue.push({ type: 'TETRA_GEN4', edgeIndex: step.edgeIndex, data: { ...cubeData, volume: step.data.volume, color: step.data.color } });
 
       } else if (step.type === 'TETRA_GEN4') {
         const cD = step.data;
@@ -298,15 +321,14 @@
         const height = (6 * cD.volume) / (cD.length * d1);
         const tetraP4 = cD.outerA.clone().addScaledVector(cD.dir, cD.length / 2).addScaledVector(vec45_B, height);
 
-        const gen4Map = createColoredTetra([[tetraP3.x, tetraP3.y, tetraP3.z], [tetraP4.x, tetraP4.y, tetraP4.z], [cD.outerA.x, cD.outerA.y, cD.outerA.z], [cD.outerB.x, cD.outerB.y, cD.outerB.z]], cD.color, 0.25);
-        let nextCubeColor = gen4Map["0-1"];
-        if (nextCubeColor === cD.historyColor) nextCubeColor = (nextCubeColor === 0xff0000) ? 0x0000ff : 0xff0000;
-
-        animationQueue.push({ type: 'CUBE_GEN4', edgeIndex: step.edgeIndex, data: { a: tetraP3, b: tetraP4, volume: cD.volume, normal: vec45_A, color: nextCubeColor, historyColor: cD.color } });
+        createColoredTetra([[tetraP3.x, tetraP3.y, tetraP3.z], [tetraP4.x, tetraP4.y, tetraP4.z], [cD.outerA.x, cD.outerA.y, cD.outerA.z], [cD.outerB.x, cD.outerB.y, cD.outerB.z]], cD.color, 0.25);
+        
+        let nextCubeColor = (cD.color === 0xff0000) ? 0x0000ff : 0xff0000;
+        animationQueue.push({ type: 'CUBE_GEN4', edgeIndex: step.edgeIndex, data: { a: tetraP3, b: tetraP4, volume: cD.volume, normal: vec45_A, color: nextCubeColor } });
 
       } else if (step.type === 'CUBE_GEN4') {
         const cubeData = buildCubeOnEdgeAligned(step.data.a, step.data.b, step.data.normal, step.data.color, 0.6, true);
-        animationQueue.push({ type: 'TETRA_GEN5', edgeIndex: step.edgeIndex, data: { ...cubeData, volume: step.data.volume, color: step.data.color, historyColor: step.data.historyColor } });
+        animationQueue.push({ type: 'TETRA_GEN5', edgeIndex: step.edgeIndex, data: { ...cubeData, volume: step.data.volume, color: step.data.color } });
 
       } else if (step.type === 'TETRA_GEN5') {
         const cD = step.data;
@@ -317,11 +339,10 @@
         const height = (6 * cD.volume) / (cD.length * d1);
         const tetraP4 = cD.outerA.clone().addScaledVector(cD.dir, cD.length / 2).addScaledVector(vec45_B, height);
 
-        const gen5Map = createColoredTetra([[tetraP3.x, tetraP3.y, tetraP3.z], [tetraP4.x, tetraP4.y, tetraP4.z], [cD.outerA.x, cD.outerA.y, cD.outerA.z], [cD.outerB.x, cD.outerB.y, cD.outerB.z]], cD.color, 0.2);
-        let nextCubeColor = gen5Map["0-1"];
-        if (nextCubeColor === cD.historyColor) nextCubeColor = (nextCubeColor === 0xff0000) ? 0x0000ff : 0xff0000;
-
-        animationQueue.push({ type: 'CUBE_GEN5', edgeIndex: step.edgeIndex, data: { a: tetraP3, b: tetraP4, volume: cD.volume, normal: vec45_A, color: nextCubeColor, historyColor: cD.color } });
+        createColoredTetra([[tetraP3.x, tetraP3.y, tetraP3.z], [tetraP4.x, tetraP4.y, tetraP4.z], [cD.outerA.x, cD.outerA.y, cD.outerA.z], [cD.outerB.x, cD.outerB.y, cD.outerB.z]], cD.color, 0.2);
+        
+        let nextCubeColor = (cD.color === 0xff0000) ? 0x0000ff : 0xff0000;
+        animationQueue.push({ type: 'CUBE_GEN5', edgeIndex: step.edgeIndex, data: { a: tetraP3, b: tetraP4, volume: cD.volume, normal: vec45_A, color: nextCubeColor } });
 
       } else if (step.type === 'CUBE_GEN5') {
         buildCubeOnEdgeAligned(step.data.a, step.data.b, step.data.normal, step.data.color, 0.65, true);
@@ -336,14 +357,12 @@
       requestAnimationFrame(animate);
       const delta = clock.getDelta();
 
-      // Dimis Vorgabe: Exakt 3-fache Rotationsgeschwindigkeit (0.15 * 3 = 0.45)
       rotationAngle += delta * 0.45; 
 
       if (isBuilding) {
         timeSinceLastStep += delta;
         timeActiveTotal += delta;
 
-        // Beschleunigter Symmetrie-Takt auf 1,5 Sekunden angepasst
         if (timeSinceLastStep >= ELEMENT_STEP_DURATION) {
           if (animationQueue.length > 0) {
             executeNextCascadeStep();
@@ -353,8 +372,6 @@
           }
         }
 
-        // Zoom-Verlangsamung: Durch Math.pow(x, 1.5) dämpfen wir das Heraustreten am Anfang massiv.
-        // Die Kamera verweilt länger nahe am oszillierenden Kern.
         const progressFactor = Math.min(timeActiveTotal / TOTAL_BUILD_DURATION, 1.0);
         const slowedProgress = Math.pow(progressFactor, 1.5); 
         
@@ -370,7 +387,6 @@
       camera.position.x = Math.sin(rotationAngle) * currentRadius;
       camera.position.z = Math.cos(rotationAngle) * currentRadius;
       
-      // Höhenanpassung proportional glätten
       camera.position.y = 3.0 + (currentRadius - START_RADIUS) * 0.15; 
       camera.lookAt(0, 1.5, 0);
 
