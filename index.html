@@ -2,7 +2,7 @@
 <html lang="de">
 <head>
   <meta charset="UTF-8" />
-  <title>Kubus-Kaskade – RVT v16 (Echte Flach-Scherung & Kaskaden-Wiederholung)</title>
+  <title>Kubus-Kaskade – RVT v16 (Dynamischer Zoom & Speed-Kalibrierung)</title>
   <style>
     body { margin: 0; overflow: hidden; background: #000; color: #fff; font-family: sans-serif; }
     #info {
@@ -15,15 +15,16 @@
       font-size: 12px;
       line-height: 1.4;
       border: 1px solid #334;
+      pointer-events: none;
     }
   </style>
 </head>
 <body>
   <div id="info">
-    <strong>RVT v16 – Kaskaden- & Volumen-Wiederholung</strong><br/>
-    • **Invariante:** Ur-Volumen bleibt über alle Zyklen absolut starr verankert.<br/>
-    • **Kryptografische Schleife:** Kantenlängen mutieren bei jedem Durchlauf neu.<br/>
-    • **Scherung:** Spitzenpunkt $P_4$ flach im echten 45°-Winkel über der Kubusfläche fixiert.
+    <strong>RVT v16 – Farb-, Scherungs- & Zoom-Kalibrierung</strong><br/>
+    • Rotation: Erhöhte Frequenz für rasante Synchronisation<br/>
+    • **Dynamischer Zoom:** Automatische Anpassung an die Expansions-Hülle<br/>
+    • Scherung: P4 flach im echten 45°-Winkel über der Fläche fixiert.
   </div>
 
   <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
@@ -31,8 +32,9 @@
     const scene = new THREE.Scene();
     scene.background = new THREE.Color(0x020208);
 
-    const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 1000);
-    camera.position.set(0, 5, 30);
+    const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 2000);
+    // Startposition nah dran
+    camera.position.set(0, 2, 5);
 
     const renderer = new THREE.WebGLRenderer({ antialias: true });
     renderer.setSize(window.innerWidth, window.innerHeight);
@@ -50,11 +52,11 @@
     let lastExecutionTime = 0;
     let resetTimer = null;
     let cycleCount = 0;
-    
-    // Die absolute, unknackbare Krypto-Invariante
     let targetUrVolume = null;
-    // Speicher für die Kantenlängen des direkten Vorgängers
-    let lastAnfangsKanten = [];
+
+    // Variablen für den dynamischen Zoom
+    let maxStructureRadius = 2;
+    let currentCameraRadius = 10;
 
     function getRandomColor() {
       return Math.floor(Math.random() * 0xffffff);
@@ -62,6 +64,14 @@
 
     function getCentroid(p1, p2, p3, p4) {
       return new THREE.Vector3(0, 0, 0).add(p1).add(p2).add(p3).add(p4).multiplyScalar(0.25);
+    }
+
+    // Aktualisiert die maximale Ausdehnung des Konstrukts relativ zum Ursprung
+    function updateExpansionBound(vector, extraMargin = 0) {
+      const dist = vector.length() + extraMargin;
+      if (dist > maxStructureRadius) {
+        maxStructureRadius = dist;
+      }
     }
 
     function createTetraMesh(points, color, opacity = 1.0) {
@@ -80,6 +90,12 @@
       const mesh = new THREE.Mesh(geom, mat);
       scene.add(mesh);
       dynamicMeshes.push(mesh);
+
+      // Punkte für Bounding-Hülle scannen
+      points.forEach(p => {
+        updateExpansionBound(new THREE.Vector3(p[0], p[1], p[2]));
+      });
+
       return mesh;
     }
 
@@ -130,6 +146,9 @@
       scene.add(cube);
       dynamicMeshes.push(cube);
 
+      // Kubus-Ausdehnung in Hülle einrechnen (Zentrum + Ecken-Radius)
+      updateExpansionBound(cube.position, length * 0.866);
+
       const outerMid = mid.clone().add(shift.clone().multiplyScalar(2));
       const outerA = outerMid.clone().addScaledVector(dir, -length / 2);
       const outerB = outerMid.clone().addScaledVector(dir, length / 2);
@@ -171,8 +190,6 @@
       }
 
       let height = (6 * volume) / (currentLength * d1);
-      
-      // ECHTE 45° NEIGUNG:
       let heightDir = new THREE.Vector3().addVectors(ortho2Dir, ortho1Dir).normalize();
       let adjustedHeight = height * Math.sqrt(2);
 
@@ -201,63 +218,41 @@
       let vP1, vP2, vP3, vP4;
 
       if (cycleCount === 1) {
-        // Der allererste Ur-Start definiert das fundamentale Schlüssel-Volumen
         vP1 = new THREE.Vector3(0.0, 1.4, 0.2);
         vP2 = new THREE.Vector3(-1.6, -0.5, 0.1);
         vP3 = new THREE.Vector3(1.3, -0.9, -0.6);
         vP4 = new THREE.Vector3(0.4, -0.1, 1.7);
         targetUrVolume = tetraVolume(vP1, vP2, vP3, vP4);
-        
-        // Speichere die initialen Kantenlängen zur Abgleichkontrolle
-        lastAnfangsKanten = [
-          vP1.distanceTo(vP2), vP1.distanceTo(vP3), vP1.distanceTo(vP4),
-          vP2.distanceTo(vP3), vP2.distanceTo(vP4), vP3.distanceTo(vP4)
-        ];
       } else {
-        // ABSOLUTE WIEDERHOLUNGSSCHLEIFE: Das Volumen MUSS exakt gleich bleiben,
-        // aber die Kantenlängen MÜSSEN sich zwingend vom vorherigen Durchlauf unterscheiden!
-        let validNewTetra = false;
-        let attempts = 0;
+        const rL1 = 1.5 + Math.random() * 1.5;
+        const rL2 = 1.5 + Math.random() * 1.5;
+        const angle = (Math.PI / 6) + Math.random() * (Math.PI / 3);
 
-        while (!validNewTetra && attempts < 100) {
-          attempts++;
-          // Generiere neue, mutierte Kantenlängen über RNG-Nachkommastellen
-          const rL1 = 1.2 + Math.random() * 1.8;
-          const rL2 = 1.2 + Math.random() * 1.8;
-          const angle = (Math.PI / 6) + Math.random() * (Math.PI / 3);
+        vP1 = new THREE.Vector3(0, 0, 0);
+        vP2 = new THREE.Vector3(rL1, 0, 0);
+        vP3 = new THREE.Vector3(rL2 * Math.cos(angle), rL2 * Math.sin(angle), Math.random() * 0.5 - 0.25);
 
-          vP1 = new THREE.Vector3(0, 0, 0);
-          vP2 = new THREE.Vector3(rL1, 0, 0);
-          vP3 = new THREE.Vector3(rL2 * Math.cos(angle), rL2 * Math.sin(angle), Math.random() * 0.6 - 0.3);
+        const baseTriangleArea = new THREE.Vector3().crossVectors(
+          new THREE.Vector3().subVectors(vP2, vP1),
+          new THREE.Vector3().subVectors(vP3, vP1)
+        ).length() * 0.5;
 
-          const baseTriangleArea = new THREE.Vector3().crossVectors(
-            new THREE.Vector3().subVectors(vP2, vP1),
-            new THREE.Vector3().subVectors(vP3, vP1)
-          ).length() * 0.5;
+        const exactHeight = (3 * targetUrVolume) / baseTriangleArea;
+        const normalDir = new THREE.Vector3().crossVectors(
+          new THREE.Vector3().subVectors(vP2, vP1),
+          new THREE.Vector3().subVectors(vP3, vP1)
+        ).normalize();
 
-          // Errechne die exakte Höhe, um die Volumen-Invariante starr zu wahren
-          const exactHeight = (3 * targetUrVolume) / baseTriangleArea;
-          const normalDir = new THREE.Vector3().crossVectors(
-            new THREE.Vector3().subVectors(vP2, vP1),
-            new THREE.Vector3().subVectors(vP3, vP1)
-          ).normalize();
-
-          const midBase = new THREE.Vector3().add(vP1).add(vP2).add(vP3).multiplyScalar(1/3);
-          vP4 = midBase.clone().addScaledVector(normalDir, exactHeight);
-
-          // Berechne die neuen Kantenlängen
-          const newKanten = [
-            vP1.distanceTo(vP2), vP1.distanceTo(vP3), vP1.distanceTo(vP4),
-            vP2.distanceTo(vP3), vP2.distanceTo(vP4), vP3.distanceTo(vP4)
-          ];
-
-          // Prüfe drakonisch, ob sich die Hauptkante signifikant vom Vorgänger unterscheidet
-          if (Math.abs(newKanten[0] - lastAnfangsKanten[0]) > 0.05) {
-            lastAnfangsKanten = newKanten;
-            validNewTetra = true;
-          }
-        }
+        const midBase = new THREE.Vector3().add(vP1).add(vP2).add(vP3).multiplyScalar(1/3);
+        vP4 = midBase.clone().addScaledVector(normalDir, exactHeight);
       }
+
+      // Initialen Hüllen-Radius aus den Ur-Punkten berechnen
+      maxStructureRadius = 0;
+      [vP1, vP2, vP3, vP4].forEach(p => updateExpansionBound(p));
+      
+      // Kamera startet nah dran passend zum Ur-Konstrukt
+      currentCameraRadius = maxStructureRadius * 2.5;
 
       const urCentroid = getCentroid(vP1, vP2, vP3, vP4);
       createTetraMesh([[vP1.x, vP1.y, vP1.z], [vP2.x, vP2.y, vP2.z], [vP3.x, vP3.y, vP3.z], [vP4.x, vP4.y, vP4.z]], 0xffffff, 1.0);
@@ -306,10 +301,12 @@
     }
 
     initCascade();
+    
     function animate() {
       requestAnimationFrame(animate);
       time += 0.01;
 
+      // Schrittweise Abarbeitung der Kaskade
       if (time - lastExecutionTime > 0.3) {
         if (animationQueue.length > 0) {
           executeNextCascadeStep();
@@ -319,18 +316,31 @@
             resetTimer = time + 5.0;
           }
           if (time > resetTimer) {
-            initCascade(); // Schmeißt die Schleife mit mutierten Kanten bei exakt gleichem Volumen an!
+            initCascade();
           }
         }
       }
 
-      const radius = 38; 
-      camera.position.x = Math.cos(time * 0.12) * radius;
-      camera.position.z = Math.sin(time * 0.12) * radius;
-      camera.lookAt(0, 0, 0);
+      // 1. ROTATIONSGESCHWINDIGKEIT ERHÖHT (Faktor von 0.12 auf 0.38 angehoben)
+      const rotationSpeed = time * 0.38;
 
+      // 2. DYNAMISCHER ZOOM (Abhängig von maxStructureRadius mit Sicherheitsfaktor für 60° FOV)
+      const targetCameraRadius = Math.max(maxStructureRadius * 2.3, 8);
+      
+      // Weiche Interpolation (Lerp) für einen geschmeidigen Zoom-Out-Effekt
+      currentCameraRadius += (targetCameraRadius - currentCameraRadius) * 0.04;
+
+      // Kamerapositionierung auf der Kreisbahn mit dynamischem Radius
+      camera.position.x = Math.cos(rotationSpeed) * currentCameraRadius;
+      camera.position.z = Math.sin(rotationSpeed) * currentCameraRadius;
+      
+      // Die Höhe skaliert leicht mit dem Zoom mit, um den flachen 45°-Winkel perfekt einzufangen
+      camera.position.y = (currentCameraRadius * 0.18) + 2;
+      
+      camera.lookAt(0, 0, 0);
       renderer.render(scene, camera);
     }
+    
     animate();
     
     window.addEventListener('resize', () => {
