@@ -2,7 +2,7 @@
 <html lang="de">
 <head>
   <meta charset="UTF-8" />
-  <title>Kubus-Kaskade – RVT v16 (Strikte 45° Ausrichtung)</title>
+  <title>Kubus-Kaskade – RVT v16 (Zwei-Flächen-Abgleich)</title>
   <style>
     body { margin: 0; overflow: hidden; background: #000; color: #fff; font-family: sans-serif; }
     #info {
@@ -21,13 +21,13 @@
 </head>
 <body>
   <div id="info">
-    <strong>RVT v16 – Exakte 45° Flächen-Kaskade</strong><br/>
+    <strong>RVT v16 – Striktes Zwei-Flächen-Kantenmodell</strong><br/>
     • Ur-Tetraeder (Weiß)<br/>
-    • Gen 1 Kuben (Orange) – 45° zur Ur-Fläche<br/>
-    • Gen 2 Tetraeder (Grün) – 45° Abspreizung zur Kubus-Fläche<br/>
-    • Gen 2 Kuben (Rot) – 45° Winkel über die korrigierte Grundfläche bezogen<br/>
-    • Gen 3 Tetraeder (Blau) – 45° Abspreizung zur roten Kubus-Fläche<br/>
-    • Gen 3 Kuben (Violett) – 45° Winkel über die korrigierte Grundfläche bezogen
+    • Gen 1 Kuben (Orange) – 45° von der **kleineren der zwei Nachbarflächen**<br/>
+    • Gen 2 Tetraeder (Grün) – 45° Abspreizung<br/>
+    • Gen 2 Kuben (Rot) – 45° Winkel-Symmetrie<br/>
+    • Gen 3 Tetraeder (Blau) – Folgestufe<br/>
+    • Gen 3 Kuben (Violett) – Finale 4. Generation
   </div>
 
   <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
@@ -92,7 +92,6 @@
       const length = edgeVec.length();
       const dir = edgeVec.clone().normalize();
 
-      // Normalenprojektion orthogonal zur Kante berechnen
       const projNormal = referenceNormal.clone().addScaledVector(dir, -referenceNormal.dot(dir)).normalize();
       const ortho2 = new THREE.Vector3().crossVectors(dir, projNormal).normalize();
 
@@ -100,7 +99,6 @@
       const mat = new THREE.MeshPhongMaterial({ color: colorRGB, transparent: opacity < 1.0, opacity });
       const cube = new THREE.Mesh(geom, mat);
 
-      // Exakter 45° Winkel zur Orientierungsfläche
       const angle = Math.PI / 4; 
       const finalNormal = projNormal.clone().multiplyScalar(Math.cos(angle)).add(ortho2.clone().multiplyScalar(Math.sin(angle))).normalize();
       const finalOrtho2 = new THREE.Vector3().crossVectors(dir, finalNormal).normalize();
@@ -115,7 +113,6 @@
       scene.add(cube);
       dynamicMeshes.push(cube);
 
-      // Außenkantenberechnung für die Kaskadierung
       const outerMid = mid.clone().add(shift.clone().multiplyScalar(2));
       const outerA = outerMid.clone().addScaledVector(dir, -length / 2);
       const outerB = outerMid.clone().addScaledVector(dir, length / 2);
@@ -165,17 +162,17 @@
       ];
 
       urEdges.forEach((edge, index) => {
-        let maxArea = -1;
-        let bestFace = null;
-        faces.forEach(f => {
-          if (f.pts.includes(edge[0]) && f.pts.includes(edge[1]) && f.area > maxArea) {
-            maxArea = f.area;
-            bestFace = f;
-          }
-        });
+        // Findet exakt die zwei Nachbarflächen, die diese Kante teilen
+        let neighborFaces = faces.filter(f => f.pts.includes(edge[0]) && f.pts.includes(edge[1]));
+        
+        // Bestimme die kleinere der beiden Flächen
+        let targetFace = neighborFaces[0];
+        if (neighborFaces[1] && neighborFaces[1].area < neighborFaces[0].area) {
+          targetFace = neighborFaces[1];
+        }
 
-        const va = new THREE.Vector3().subVectors(bestFace.pts[1], bestFace.pts[0]);
-        const vb = new THREE.Vector3().subVectors(bestFace.pts[2], bestFace.pts[0]);
+        const va = new THREE.Vector3().subVectors(targetFace.pts[1], targetFace.pts[0]);
+        const vb = new THREE.Vector3().subVectors(targetFace.pts[2], targetFace.pts[0]);
         const normal = new THREE.Vector3().crossVectors(va, vb).normalize();
 
         animationQueue.push({ 
@@ -199,7 +196,6 @@
         const stretchFactor = 1.2;
         const d1 = cD.length * stretchFactor;
         
-        // Strikte 45° Abspreizung zur Kubus-Deckfläche
         const vec45_A = new THREE.Vector3().addVectors(cD.ortho1, cD.ortho2).normalize();
         const vec45_B = new THREE.Vector3().subVectors(cD.ortho1, cD.ortho2).normalize();
 
@@ -214,11 +210,9 @@
           [tetraP4.x, tetraP4.y, tetraP4.z]
         ], 0x00ff00, 0.5);
 
-        // Die exakte Grundflächen-Normale gegenüberliegend zur Kante wird weitergegeben, nicht berechnet!
         animationQueue.push({ type: 'CUBE_GEN2', edgeIndex: step.edgeIndex, data: { a: tetraP3, b: tetraP4, volume: cD.volume, normal: vec45_A } });
 
       } else if (step.type === 'CUBE_GEN2') {
-        // Gen 2 Kubus rechnet exakt im 45° Winkel über den vererbten Vektor weiter
         const cubeData = buildCubeOnEdgeAligned(step.data.a, step.data.b, step.data.normal, 0xff4444, 0.6);
         animationQueue.push({ type: 'TETRA_GEN3', edgeIndex: step.edgeIndex, data: { ...cubeData, volume: step.data.volume } });
 
@@ -241,11 +235,9 @@
           [tetraP4.x, tetraP4.y, tetraP4.z]
         ], 0x0088ff, 0.6);
 
-        // Die Grundflächen-Normale wird für die 3. Kubusgeneration übergeben
         animationQueue.push({ type: 'CUBE_GEN3', edgeIndex: step.edgeIndex, data: { a: tetraP3, b: tetraP4, volume: cD.volume, normal: vec45_A } });
 
       } else if (step.type === 'CUBE_GEN3') {
-        // Gen 3 Kuben (Violett) – Schließt die geforderte Kette unter Beibehaltung der 45°-Symmetrie ab
         buildCubeOnEdgeAligned(step.data.a, step.data.b, step.data.normal, 0xaa00ff, 0.9);
       }
     }
