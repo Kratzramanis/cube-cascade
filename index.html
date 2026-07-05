@@ -2,7 +2,7 @@
 <html lang="de">
 <head>
   <meta charset="UTF-8" />
-  <title>Kubus-Kaskade – RVT v16 (Reine Flächenkopplung mit Kanten-Asymmetrie)</title>
+  <title>Kubus-Kaskade – RVT v16 (Globale Generations-Asymmetrie)</title>
   <style>
     body { margin: 0; overflow: hidden; background: #000; color: #fff; font-family: sans-serif; }
     #info {
@@ -21,11 +21,11 @@
 </head>
 <body>
   <div id="info">
-    <strong>RVT v16 – Striktes 45°-Flächenbezugssystem</strong><br/>
+    <strong>RVT v16 – Globale Kanten-Disjunktion</strong><br/>
     • Taktung: Exakt 1,5 Sekunden pro Einzelelement.<br/>
-    • Winkeltreue: Exakt 45 Grad zur Kubusfläche in jeder Generation gewahrt.<br/>
-    • Kanten-Ausschluss: 5 freie Kanten untereinander ungleich durch linearen Asymmetrie-Shift.<br/>
-    • Generationen-Logik: Isoliert balanciert auf jeder Entwicklungsstufe.
+    • 45°-Kopplung: Zu den Kubusflächen in jeder Generation strikt gewahrt.<br/>
+    • Globaler Kanten-Ausschluss: Alle 6 Tetraeder der 1. Generation besitzen untereinander vollkommen ungleiche Kantenlängen.<br/>
+    • Windschiefe Raummatrix: Volle mathematische Varianz pro Kantenindex.
   </div>
 
   <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
@@ -69,21 +69,13 @@
     function generateTetraEdgeColors(baseEdgeColor) {
       if (baseEdgeColor === 0xff0000) {
         return { 
-          "0-1": 0x0000ff, 
-          "0-2": 0x0000ff, 
-          "1-2": 0xff0000, 
-          "0-3": 0xff0000, 
-          "1-3": 0x0000ff, 
-          "2-3": 0xff0000  
+          "0-1": 0x0000ff, "0-2": 0x0000ff, "1-2": 0xff0000, 
+          "0-3": 0xff0000, "1-3": 0x0000ff, "2-3": 0xff0000  
         };
       } else {
         return { 
-          "0-1": 0xff0000, 
-          "0-2": 0xff0000, 
-          "1-2": 0x0000ff, 
-          "0-3": 0x0000ff, 
-          "1-3": 0xff0000, 
-          "2-3": 0x0000ff  
+          "0-1": 0xff0000, "0-2": 0xff0000, "1-2": 0x0000ff, 
+          "0-3": 0x0000ff, "1-3": 0xff0000, "2-3": 0x0000ff  
         };
       }
     }
@@ -271,18 +263,20 @@
         animationQueue.push({ type: 'TETRA_GEN2', edgeIndex: step.edgeIndex, data: { ...cubeData, volume: step.data.volume, color: step.data.color } });
 
       } else if (step.type === 'TETRA_GEN2') {
+        // GENERATION 1 DER AUFBAU-TETRAEDER (6 Tetraeder auf den 6 Fugen)
         const cD = step.data;
+        const idx = step.edgeIndex; // Wert von 0 bis 5 für absolute mathematische Disjunktion
         
-        // Exakt 45 Grad zur Fläche des Kubus wiederhergestellt:
+        // Strikt gewahrte 45-Grad-Ausrichtung zur Kubusfläche:
         const vec45_A = new THREE.Vector3().addVectors(cD.ortho1, cD.ortho2).normalize();
         const vec45_B = new THREE.Vector3().subVectors(cD.ortho1, cD.ortho2).normalize();
         
-        // Kanten-Ausschluss-Asymmetrie über ungleiche Dimensionen und linearen Shift entlang der Kante (dir)
-        const d1 = cD.length * 1.25; 
-        const height = ((6 * cD.volume) / (cD.length * d1)) * 0.8;
+        // Globale Disjunktion: Jedes der 6 Tetraeder erhält über seinen Index 'idx' komplett andere Skalierungsfaktoren
+        const d1 = cD.length * (1.10 + idx * 0.08); 
+        const height = ((6 * cD.volume) / (cD.length * d1)) * (0.75 - idx * 0.04);
         
-        // Kleiner Asymmetrie-Shift entlang der Kante verschiebt die Spitzen, lässt den 45°-Winkel zur Fläche aber perfekt intakt
-        const shiftAsym = cD.dir.clone().multiplyScalar(cD.length * 0.1);
+        // Ein indexbasierter linearer Shift entlang der Kante (dir) garantiert, dass alle 6x5 freien Kanten untereinander disjunkt sind
+        const shiftAsym = cD.dir.clone().multiplyScalar(cD.length * (0.05 + idx * 0.03));
 
         const tetraP3 = cD.outerA.clone().addScaledVector(cD.dir, cD.length / 2).add(shiftAsym).addScaledVector(vec45_A, d1);
         const tetraP4 = cD.outerA.clone().addScaledVector(cD.dir, cD.length / 2).sub(shiftAsym).addScaledVector(vec45_B, height);
@@ -290,7 +284,7 @@
         createColoredTetra([[tetraP3.x, tetraP3.y, tetraP3.z], [tetraP4.x, tetraP4.y, tetraP4.z], [cD.outerA.x, cD.outerA.y, cD.outerA.z], [cD.outerB.x, cD.outerB.y, cD.outerB.z]], cD.color, 0.35);
         
         let nextCubeColor = (cD.color === 0xff0000) ? 0x0000ff : 0xff0000;
-        animationQueue.push({ type: 'CUBE_GEN2', edgeIndex: step.edgeIndex, data: { a: tetraP3, b: tetraP4, volume: cD.volume, normal: vec45_A, color: nextCubeColor } });
+        animationQueue.push({ type: 'CUBE_GEN2', edgeIndex: idx, data: { a: tetraP3, b: tetraP4, volume: cD.volume, normal: vec45_A, color: nextCubeColor } });
 
       } else if (step.type === 'CUBE_GEN2') {
         const cubeData = buildCubeOnEdgeAligned(step.data.a, step.data.b, step.data.normal, step.data.color, 0.5, true);
@@ -298,13 +292,14 @@
 
       } else if (step.type === 'TETRA_GEN3') {
         const cD = step.data;
+        const idx = step.edgeIndex;
         
         const vec45_A = new THREE.Vector3().addVectors(cD.ortho1, cD.ortho2).normalize();
         const vec45_B = new THREE.Vector3().subVectors(cD.ortho1, cD.ortho2).normalize();
         
-        const d1 = cD.length * 1.15; 
-        const height = ((6 * cD.volume) / (cD.length * d1)) * 0.88;
-        const shiftAsym = cD.dir.clone().multiplyScalar(cD.length * 0.08);
+        const d1 = cD.length * (1.08 + idx * 0.05); 
+        const height = ((6 * cD.volume) / (cD.length * d1)) * (0.80 - idx * 0.03);
+        const shiftAsym = cD.dir.clone().multiplyScalar(cD.length * (0.04 + idx * 0.02));
 
         const tetraP3 = cD.outerA.clone().addScaledVector(cD.dir, cD.length / 2).add(shiftAsym).addScaledVector(vec45_A, d1);
         const tetraP4 = cD.outerA.clone().addScaledVector(cD.dir, cD.length / 2).sub(shiftAsym).addScaledVector(vec45_B, height);
@@ -312,7 +307,7 @@
         createColoredTetra([[tetraP3.x, tetraP3.y, tetraP3.z], [tetraP4.x, tetraP4.y, tetraP4.z], [cD.outerA.x, cD.outerA.y, cD.outerA.z], [cD.outerB.x, cD.outerB.y, cD.outerB.z]], cD.color, 0.3);
         
         let nextCubeColor = (cD.color === 0xff0000) ? 0x0000ff : 0xff0000;
-        animationQueue.push({ type: 'CUBE_GEN3', edgeIndex: step.edgeIndex, data: { a: tetraP3, b: tetraP4, volume: cD.volume, normal: vec45_A, color: nextCubeColor } });
+        animationQueue.push({ type: 'CUBE_GEN3', edgeIndex: idx, data: { a: tetraP3, b: tetraP4, volume: cD.volume, normal: vec45_A, color: nextCubeColor } });
 
       } else if (step.type === 'CUBE_GEN3') {
         const cubeData = buildCubeOnEdgeAligned(step.data.a, step.data.b, step.data.normal, step.data.color, 0.55, true);
@@ -320,13 +315,14 @@
 
       } else if (step.type === 'TETRA_GEN4') {
         const cD = step.data;
+        const idx = step.edgeIndex;
         
         const vec45_A = new THREE.Vector3().addVectors(cD.ortho1, cD.ortho2).normalize();
         const vec45_B = new THREE.Vector3().subVectors(cD.ortho1, cD.ortho2).normalize();
         
-        const d1 = cD.length * 1.1;
-        const height = ((6 * cD.volume) / (cD.length * d1)) * 0.92;
-        const shiftAsym = cD.dir.clone().multiplyScalar(cD.length * 0.05);
+        const d1 = cD.length * (1.05 + idx * 0.03);
+        const height = ((6 * cD.volume) / (cD.length * d1)) * (0.85 - idx * 0.02);
+        const shiftAsym = cD.dir.clone().multiplyScalar(cD.length * (0.03 + idx * 0.01));
 
         const tetraP3 = cD.outerA.clone().addScaledVector(cD.dir, cD.length / 2).add(shiftAsym).addScaledVector(vec45_A, d1);
         const tetraP4 = cD.outerA.clone().addScaledVector(cD.dir, cD.length / 2).sub(shiftAsym).addScaledVector(vec45_B, height);
@@ -334,7 +330,7 @@
         createColoredTetra([[tetraP3.x, tetraP3.y, tetraP3.z], [tetraP4.x, tetraP4.y, tetraP4.z], [cD.outerA.x, cD.outerA.y, cD.outerA.z], [cD.outerB.x, cD.outerB.y, cD.outerB.z]], cD.color, 0.25);
         
         let nextCubeColor = (cD.color === 0xff0000) ? 0x0000ff : 0xff0000;
-        animationQueue.push({ type: 'CUBE_GEN4', edgeIndex: step.edgeIndex, data: { a: tetraP3, b: tetraP4, volume: cD.volume, normal: vec45_A, color: nextCubeColor } });
+        animationQueue.push({ type: 'CUBE_GEN4', edgeIndex: idx, data: { a: tetraP3, b: tetraP4, volume: cD.volume, normal: vec45_A, color: nextCubeColor } });
 
       } else if (step.type === 'CUBE_GEN4') {
         const cubeData = buildCubeOnEdgeAligned(step.data.a, step.data.b, step.data.normal, step.data.color, 0.6, true);
@@ -342,11 +338,12 @@
 
       } else if (step.type === 'TETRA_GEN5') {
         const cD = step.data;
+        const idx = step.edgeIndex;
         
         const vec45_A = new THREE.Vector3().addVectors(cD.ortho1, cD.ortho2).normalize();
         const vec45_B = new THREE.Vector3().subVectors(cD.ortho1, cD.ortho2).normalize();
         
-        const d1 = cD.length * 1.05;
+        const d1 = cD.length * (1.02 + idx * 0.01);
         const height = (6 * cD.volume) / (cD.length * d1);
 
         const tetraP3 = cD.outerA.clone().addScaledVector(cD.dir, cD.length / 2).addScaledVector(vec45_A, d1);
@@ -355,7 +352,7 @@
         createColoredTetra([[tetraP3.x, tetraP3.y, tetraP3.z], [tetraP4.x, tetraP4.y, tetraP4.z], [cD.outerA.x, cD.outerA.y, cD.outerA.z], [cD.outerB.x, cD.outerB.y, cD.outerB.z]], cD.color, 0.2);
         
         let nextCubeColor = (cD.color === 0xff0000) ? 0x0000ff : 0xff0000;
-        animationQueue.push({ type: 'CUBE_GEN5', edgeIndex: step.edgeIndex, data: { a: tetraP3, b: tetraP4, volume: cD.volume, normal: vec45_A, color: nextCubeColor } });
+        animationQueue.push({ type: 'CUBE_GEN5', edgeIndex: idx, data: { a: tetraP3, b: tetraP4, volume: cD.volume, normal: vec45_A, color: nextCubeColor } });
 
       } else if (step.type === 'CUBE_GEN5') {
         buildCubeOnEdgeAligned(step.data.a, step.data.b, step.data.normal, step.data.color, 0.65, true);
