@@ -30,7 +30,7 @@
     const scene = new THREE.Scene();
     scene.background = new THREE.Color(0x020205);
 
-    const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 4000);
+    const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 8000);
 
     const renderer = new THREE.WebGLRenderer({ antialias: true });
     renderer.setSize(window.innerWidth, window.innerHeight);
@@ -48,19 +48,16 @@
     let rotationAngle = 0;
     let isBuilding = true;
     
-    const START_RADIUS = 15.0;      
-    const MAX_ZOOM_RADIUS = 130.0;  
-    let currentRadius = START_RADIUS;
+    // Dynamische Zoom-Parameter
+    let currentRadius = 30.0;
+    let targetRadius = 30.0;
+    const boundingBox = new THREE.Box3();
     
-    let timeActiveTotal = 0;
     let timeSinceLastStep = 0;
     let timeSinceBuildEnd = 0;
     
-    // Aufbaugeschwindigkeit auf 0.3 Sekunden angepasst
-    const ELEMENT_STEP_DURATION = 0.3; 
-    const totalStepsInCycle = 54; 
-    const TOTAL_BUILD_DURATION = totalStepsInCycle * ELEMENT_STEP_DURATION; 
-
+    // Modifiziertes Zeitintervall auf Wunsch des Kapitäns: 150ms
+    const ELEMENT_STEP_DURATION = 0.15; 
     const resetTimer = 15.0;       
     let cycleCount = 0; 
 
@@ -80,9 +77,35 @@
       }
     }
 
+    function updateBoundingBox(points) {
+      points.forEach(pt => {
+        boundingBox.expandByPoint(new THREE.Vector3(...pt));
+      });
+      calculateGanzkoerperRadius();
+    }
+
+    function calculateGanzkoerperRadius() {
+      const size = new THREE.Vector3();
+      boundingBox.getSize(size);
+      const maxDim = Math.max(size.x, size.y, size.z);
+      
+      // Berechnung des optimalen Abstands basierend auf dem Field of View (FOV)
+      const fovRad = (camera.fov * Math.PI) / 180;
+      let calculatedRadius = maxDim / (2 * Math.tan(fovRad / 2));
+      
+      // Sicherheitsfaktor (1.4), damit die Ecken bei Rotation niemals den Bildschirmrand schneiden
+      calculatedRadius *= 1.4;
+      
+      // Mindestabstand festlegen
+      targetRadius = Math.max(calculatedRadius, 25.0);
+    }
+
     function createColoredTetra(points, baseEdgeColor, opacity = 0.45) {
       const p = points.map(pt => new THREE.Vector3(...pt));
       const kantenMuster = generateTetraEdgeColors(baseEdgeColor);
+
+      // Erweitere die Bounding Box um die neuen Punkte des Tetraeders
+      updateBoundingBox(points);
 
       function getLocalKantenFarbe(i1, i2) {
         const key = i1 < i2 ? `${i1}-${i2}` : `${i2}-${i1}`;
@@ -210,6 +233,11 @@
       const outerA = outerMid.clone().addScaledVector(dir, -length / 2);
       const outerB = outerMid.clone().addScaledVector(dir, length / 2);
 
+      // Auch die Ecken der Würfel in die Bounding Box einbeziehen
+      boundingBox.expandByPoint(outerA);
+      boundingBox.expandByPoint(outerB);
+      calculateGanzkoerperRadius();
+
       return { outerA, outerB, length, dir, ortho1: finalNormal, ortho2: finalOrtho2 };
     }
 
@@ -218,12 +246,14 @@
       dynamicMeshes = [];
       animationQueue = [];
       
+      boundingBox.makeEmpty();
       rotationAngle = 0;
       isBuilding = true;
-      timeActiveTotal = 0;
       timeSinceLastStep = 0;
       timeSinceBuildEnd = 0;
-      currentRadius = START_RADIUS;
+      
+      currentRadius = 30.0;
+      targetRadius = 30.0;
 
       cycleCount++;
 
@@ -411,7 +441,6 @@
 
       if (isBuilding) {
         timeSinceLastStep += delta;
-        timeActiveTotal += delta;
 
         if (timeSinceLastStep >= ELEMENT_STEP_DURATION) {
           if (animationQueue.length > 0) {
@@ -421,23 +450,21 @@
             isBuilding = false;
           }
         }
-
-        const progressFactor = Math.min(timeActiveTotal / TOTAL_BUILD_DURATION, 1.0);
-        const slowedProgress = Math.pow(progressFactor, 1.8); 
-        
-        currentRadius = START_RADIUS + slowedProgress * (MAX_ZOOM_RADIUS - START_RADIUS);
-
       } else {
         timeSinceBuildEnd += delta;
-        currentRadius = MAX_ZOOM_RADIUS; 
-
         if (timeSinceBuildEnd > resetTimer) initCascade();
       }
+
+      // Fliessende Interpolation (Lerp) des Kameraradius für seidenweiche Anpassung
+      currentRadius += (targetRadius - currentRadius) * delta * 4.0;
 
       camera.position.x = Math.sin(rotationAngle) * currentRadius;
       camera.position.z = Math.cos(rotationAngle) * currentRadius;
       
-      camera.position.y = 5.0 + (currentRadius - START_RADIUS) * 0.12; 
+      // Höhenanpassung dynamisch an den aktuellen Radius koppeln
+      camera.position.y = 5.0 + (currentRadius * 0.1); 
+      
+      // Fokus bleibt starr auf dem Massenzentrum
       camera.lookAt(0, 3.0, 0);
 
       renderer.render(scene, camera);
@@ -450,6 +477,7 @@
       camera.aspect = window.innerWidth / window.innerHeight;
       camera.updateProjectionMatrix();
       renderer.setSize(window.innerWidth, window.innerHeight);
+      calculateGanzkoerperRadius();
     });
   </script>
 </body>
