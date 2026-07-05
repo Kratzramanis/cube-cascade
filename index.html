@@ -2,7 +2,7 @@
 <html lang="de">
 <head>
   <meta charset="UTF-8" />
-  <title>Kubus-Kaskade – RVT v16 (Globale Generations-Asymmetrie)</title>
+  <title>Kubus-Kaskade – RVT v16 (Dynamische Zyklen-Asymmetrie)</title>
   <style>
     body { margin: 0; overflow: hidden; background: #000; color: #fff; font-family: sans-serif; }
     #info {
@@ -21,11 +21,10 @@
 </head>
 <body>
   <div id="info">
-    <strong>RVT v16 – Globale Kanten-Disjunktion</strong><br/>
-    • Taktung: Exakt 1,5 Sekunden pro Einzelelement.<br/>
-    • 45°-Kopplung: Zu den Kubusflächen in jeder Generation strikt gewahrt.<br/>
-    • Globaler Kanten-Ausschluss: Alle 6 Tetraeder der 1. Generation besitzen untereinander vollkommen ungleiche Kantenlängen.<br/>
-    • Windschiefe Raummatrix: Volle mathematische Varianz pro Kantenindex.
+    <strong>RVT v16 – Zyklische Kanten-Disjunktion</strong><br/>
+    • Taktung: Exakt 0.8 Sekunden pro Einzelelement (Beschleunigt).<br/>
+    • Rotation: Verdoppelt auf Basis-Faktor 0.9.<br/>
+    • Dynamische Phasen: Deterministische Verschiebung pro Generation durch laufende Zyklen.
   </div>
 
   <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
@@ -59,7 +58,8 @@
     let timeSinceLastStep = 0;
     let timeSinceBuildEnd = 0;
     
-    const ELEMENT_STEP_DURATION = 1.5; 
+    // ANPASSUNG 1: Taktung von 1.5s auf 0.8s reduziert
+    const ELEMENT_STEP_DURATION = 0.8; 
     const totalStepsInCycle = 54; 
     const TOTAL_BUILD_DURATION = totalStepsInCycle * ELEMENT_STEP_DURATION; 
 
@@ -129,7 +129,7 @@
         [0, 1], [0, 2], [1, 2], [0, 3], [1, 3], [2, 3]
       ];
 
-      kantenPaare.forEach(paar => {
+      grid = kantenPaare.forEach(paar => {
         const col = getLocalKantenFarbe(paar[0], paar[1]);
         const lineGeom = new THREE.BufferGeometry().setFromPoints([p[paar[0]], p[paar[1]]]);
         const lineMat = new THREE.LineBasicMaterial({ color: col, linewidth: 2 });
@@ -201,6 +201,7 @@
 
       cycleCount++;
 
+      // Ur-Tetraeder bleibt als geometrische Konstante gleich
       let P1 = [0.0, 2.5, 0.4];
       let P2 = [-2.5, -1.0, 0.0];
       let P3 = [2.5, -1.5, -0.8];
@@ -258,24 +259,23 @@
       if (animationQueue.length === 0) return;
       const step = animationQueue.shift();
 
+      // ANPASSUNG 3: Einbindung von 'cycleCount' in alle Tetraeder-Phasen, um das Modell pro Zyklus kontrolliert zu morphen.
       if (step.type === 'CUBE_GEN1') {
         const cubeData = buildCubeOnEdgeAligned(step.data.a, step.data.b, step.data.normal, step.data.color, 0.45, false);
         animationQueue.push({ type: 'TETRA_GEN2', edgeIndex: step.edgeIndex, data: { ...cubeData, volume: step.data.volume, color: step.data.color } });
 
       } else if (step.type === 'TETRA_GEN2') {
-        // GENERATION 1 DER AUFBAU-TETRAEDER (6 Tetraeder auf den 6 Fugen)
         const cD = step.data;
-        const idx = step.edgeIndex; // Wert von 0 bis 5 für absolute mathematische Disjunktion
+        const idx = step.edgeIndex; 
         
-        // Strikt gewahrte 45-Grad-Ausrichtung zur Kubusfläche:
         const vec45_A = new THREE.Vector3().addVectors(cD.ortho1, cD.ortho2).normalize();
         const vec45_B = new THREE.Vector3().subVectors(cD.ortho1, cD.ortho2).normalize();
         
-        // Globale Disjunktion: Jedes der 6 Tetraeder erhält über seinen Index 'idx' komplett andere Skalierungsfaktoren
-        const d1 = cD.length * (1.10 + idx * 0.08); 
+        // Verschiebung über cycleCount mod 7 verhindert extremes Wachstum, sichert aber Phasenwechsel
+        const cycleShift = (cycleCount % 7) * 0.04; 
+        const d1 = cD.length * (1.10 + idx * 0.08 + cycleShift); 
         const height = ((6 * cD.volume) / (cD.length * d1)) * (0.75 - idx * 0.04);
         
-        // Ein indexbasierter linearer Shift entlang der Kante (dir) garantiert, dass alle 6x5 freien Kanten untereinander disjunkt sind
         const shiftAsym = cD.dir.clone().multiplyScalar(cD.length * (0.05 + idx * 0.03));
 
         const tetraP3 = cD.outerA.clone().addScaledVector(cD.dir, cD.length / 2).add(shiftAsym).addScaledVector(vec45_A, d1);
@@ -297,7 +297,8 @@
         const vec45_A = new THREE.Vector3().addVectors(cD.ortho1, cD.ortho2).normalize();
         const vec45_B = new THREE.Vector3().subVectors(cD.ortho1, cD.ortho2).normalize();
         
-        const d1 = cD.length * (1.08 + idx * 0.05); 
+        const cycleShift = (cycleCount % 7) * 0.03;
+        const d1 = cD.length * (1.08 + idx * 0.05 + cycleShift); 
         const height = ((6 * cD.volume) / (cD.length * d1)) * (0.80 - idx * 0.03);
         const shiftAsym = cD.dir.clone().multiplyScalar(cD.length * (0.04 + idx * 0.02));
 
@@ -320,7 +321,8 @@
         const vec45_A = new THREE.Vector3().addVectors(cD.ortho1, cD.ortho2).normalize();
         const vec45_B = new THREE.Vector3().subVectors(cD.ortho1, cD.ortho2).normalize();
         
-        const d1 = cD.length * (1.05 + idx * 0.03);
+        const cycleShift = (cycleCount % 7) * 0.02;
+        const d1 = cD.length * (1.05 + idx * 0.03 + cycleShift);
         const height = ((6 * cD.volume) / (cD.length * d1)) * (0.85 - idx * 0.02);
         const shiftAsym = cD.dir.clone().multiplyScalar(cD.length * (0.03 + idx * 0.01));
 
@@ -343,7 +345,8 @@
         const vec45_A = new THREE.Vector3().addVectors(cD.ortho1, cD.ortho2).normalize();
         const vec45_B = new THREE.Vector3().subVectors(cD.ortho1, cD.ortho2).normalize();
         
-        const d1 = cD.length * (1.02 + idx * 0.01);
+        const cycleShift = (cycleCount % 7) * 0.01;
+        const d1 = cD.length * (1.02 + idx * 0.01 + cycleShift);
         const height = (6 * cD.volume) / (cD.length * d1);
 
         const tetraP3 = cD.outerA.clone().addScaledVector(cD.dir, cD.length / 2).addScaledVector(vec45_A, d1);
@@ -367,7 +370,8 @@
       requestAnimationFrame(animate);
       const delta = clock.getDelta();
 
-      rotationAngle += delta * 0.45; 
+      // ANPASSUNG 2: Rotationsgeschwindigkeit von 0.45 auf 0.9 verdoppelt
+      rotationAngle += delta * 0.9; 
 
       if (isBuilding) {
         timeSinceLastStep += delta;
