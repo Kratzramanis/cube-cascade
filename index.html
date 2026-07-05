@@ -2,7 +2,7 @@
 <html lang="de">
 <head>
   <meta charset="UTF-8" />
-  <title>Kubus-Kaskade – RVT v16 (Abweichungskanten-Logik)</title>
+  <title>Kubus-Kaskade – RVT v16 (Reine Flächenkopplung mit Kanten-Asymmetrie)</title>
   <style>
     body { margin: 0; overflow: hidden; background: #000; color: #fff; font-family: sans-serif; }
     #info {
@@ -21,10 +21,11 @@
 </head>
 <body>
   <div id="info">
-    <strong>RVT v16 – Beschleunigtes Bezugssystem</strong><br/>
+    <strong>RVT v16 – Striktes 45°-Flächenbezugssystem</strong><br/>
     • Taktung: Exakt 1,5 Sekunden pro Einzelelement.<br/>
-    • Rotation: 3-fache Geschwindigkeit (Dynamischer Orbit).<br/>
-    • Farblogik: Fraktale Varianz über Abweichungskanten (Rot-Basis wählt Blaue Kante für neuen Kubus).
+    • Winkeltreue: Exakt 45 Grad zur Kubusfläche in jeder Generation gewahrt.<br/>
+    • Kanten-Ausschluss: 5 freie Kanten untereinander ungleich durch linearen Asymmetrie-Shift.<br/>
+    • Generationen-Logik: Isoliert balanciert auf jeder Entwicklungsstufe.
   </div>
 
   <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
@@ -63,13 +64,7 @@
     const TOTAL_BUILD_DURATION = totalStepsInCycle * ELEMENT_STEP_DURATION; 
 
     const resetTimer = 15.0;       
-
-    // RVT Evolution: Zyklus-Zähler und Kanten-Variationskoeffizienten
-    let cycleCount = 0;
-    let gen2Factor = 1.20;
-    let gen3Factor = 1.15;
-    let gen4Factor = 1.10;
-    let gen5Factor = 1.05;
+    let cycleCount = 0; 
 
     function generateTetraEdgeColors(baseEdgeColor) {
       if (baseEdgeColor === 0xff0000) {
@@ -212,7 +207,8 @@
       timeSinceBuildEnd = 0;
       currentRadius = START_RADIUS;
 
-      // Das Ur-Tetraeder bleibt strukturell und koordinatentechnisch absolut identisch
+      cycleCount++;
+
       let P1 = [0.0, 2.5, 0.4];
       let P2 = [-2.5, -1.0, 0.0];
       let P3 = [2.5, -1.5, -0.8];
@@ -263,16 +259,7 @@
         });
       });
 
-      // Evolutionäre Fortführung: Modifiziere die Kantenfaktoren für den NÄCHSTEN Durchlauf
-      if (cycleCount > 0) {
-        gen2Factor = 1.05 + Math.abs(Math.sin(cycleCount * 1.7)) * 0.4;
-        gen3Factor = 1.00 + Math.abs(Math.cos(cycleCount * 1.2)) * 0.35;
-        gen4Factor = 0.95 + Math.abs(Math.sin(cycleCount * 0.9)) * 0.3;
-        gen5Factor = 0.90 + Math.abs(Math.cos(cycleCount * 2.1)) * 0.25;
-      }
-
       executeNextCascadeStep();
-      cycleCount++;
     }
 
     function executeNextCascadeStep() {
@@ -285,14 +272,20 @@
 
       } else if (step.type === 'TETRA_GEN2') {
         const cD = step.data;
-        // Dynamischer Kantenaufbau der 2. Generation, gesteuert durch gen2Factor
-        const d1 = cD.length * gen2Factor; 
+        
+        // Exakt 45 Grad zur Fläche des Kubus wiederhergestellt:
         const vec45_A = new THREE.Vector3().addVectors(cD.ortho1, cD.ortho2).normalize();
         const vec45_B = new THREE.Vector3().subVectors(cD.ortho1, cD.ortho2).normalize();
-        const tetraP3 = cD.outerA.clone().addScaledVector(cD.dir, cD.length / 2).addScaledVector(vec45_A, d1);
-        // Die Höhe wird so skaliert, dass das Volumen exakt dem Ur-Volumen entspricht!
-        const height = (6 * cD.volume) / (cD.length * d1);
-        const tetraP4 = cD.outerA.clone().addScaledVector(cD.dir, cD.length / 2).addScaledVector(vec45_B, height);
+        
+        // Kanten-Ausschluss-Asymmetrie über ungleiche Dimensionen und linearen Shift entlang der Kante (dir)
+        const d1 = cD.length * 1.25; 
+        const height = ((6 * cD.volume) / (cD.length * d1)) * 0.8;
+        
+        // Kleiner Asymmetrie-Shift entlang der Kante verschiebt die Spitzen, lässt den 45°-Winkel zur Fläche aber perfekt intakt
+        const shiftAsym = cD.dir.clone().multiplyScalar(cD.length * 0.1);
+
+        const tetraP3 = cD.outerA.clone().addScaledVector(cD.dir, cD.length / 2).add(shiftAsym).addScaledVector(vec45_A, d1);
+        const tetraP4 = cD.outerA.clone().addScaledVector(cD.dir, cD.length / 2).sub(shiftAsym).addScaledVector(vec45_B, height);
 
         createColoredTetra([[tetraP3.x, tetraP3.y, tetraP3.z], [tetraP4.x, tetraP4.y, tetraP4.z], [cD.outerA.x, cD.outerA.y, cD.outerA.z], [cD.outerB.x, cD.outerB.y, cD.outerB.z]], cD.color, 0.35);
         
@@ -305,13 +298,16 @@
 
       } else if (step.type === 'TETRA_GEN3') {
         const cD = step.data;
-        // Dynamischer Kantenaufbau der 3. Generation, gesteuert durch gen3Factor
-        const d1 = cD.length * gen3Factor;
+        
         const vec45_A = new THREE.Vector3().addVectors(cD.ortho1, cD.ortho2).normalize();
         const vec45_B = new THREE.Vector3().subVectors(cD.ortho1, cD.ortho2).normalize();
-        const tetraP3 = cD.outerA.clone().addScaledVector(cD.dir, cD.length / 2).addScaledVector(vec45_A, d1);
-        const height = (6 * cD.volume) / (cD.length * d1);
-        const tetraP4 = cD.outerA.clone().addScaledVector(cD.dir, cD.length / 2).addScaledVector(vec45_B, height);
+        
+        const d1 = cD.length * 1.15; 
+        const height = ((6 * cD.volume) / (cD.length * d1)) * 0.88;
+        const shiftAsym = cD.dir.clone().multiplyScalar(cD.length * 0.08);
+
+        const tetraP3 = cD.outerA.clone().addScaledVector(cD.dir, cD.length / 2).add(shiftAsym).addScaledVector(vec45_A, d1);
+        const tetraP4 = cD.outerA.clone().addScaledVector(cD.dir, cD.length / 2).sub(shiftAsym).addScaledVector(vec45_B, height);
 
         createColoredTetra([[tetraP3.x, tetraP3.y, tetraP3.z], [tetraP4.x, tetraP4.y, tetraP4.z], [cD.outerA.x, cD.outerA.y, cD.outerA.z], [cD.outerB.x, cD.outerB.y, cD.outerB.z]], cD.color, 0.3);
         
@@ -324,13 +320,16 @@
 
       } else if (step.type === 'TETRA_GEN4') {
         const cD = step.data;
-        // Dynamischer Kantenaufbau der 4. Generation, gesteuert durch gen4Factor
-        const d1 = cD.length * gen4Factor;
+        
         const vec45_A = new THREE.Vector3().addVectors(cD.ortho1, cD.ortho2).normalize();
         const vec45_B = new THREE.Vector3().subVectors(cD.ortho1, cD.ortho2).normalize();
-        const tetraP3 = cD.outerA.clone().addScaledVector(cD.dir, cD.length / 2).addScaledVector(vec45_A, d1);
-        const height = (6 * cD.volume) / (cD.length * d1);
-        const tetraP4 = cD.outerA.clone().addScaledVector(cD.dir, cD.length / 2).addScaledVector(vec45_B, height);
+        
+        const d1 = cD.length * 1.1;
+        const height = ((6 * cD.volume) / (cD.length * d1)) * 0.92;
+        const shiftAsym = cD.dir.clone().multiplyScalar(cD.length * 0.05);
+
+        const tetraP3 = cD.outerA.clone().addScaledVector(cD.dir, cD.length / 2).add(shiftAsym).addScaledVector(vec45_A, d1);
+        const tetraP4 = cD.outerA.clone().addScaledVector(cD.dir, cD.length / 2).sub(shiftAsym).addScaledVector(vec45_B, height);
 
         createColoredTetra([[tetraP3.x, tetraP3.y, tetraP3.z], [tetraP4.x, tetraP4.y, tetraP4.z], [cD.outerA.x, cD.outerA.y, cD.outerA.z], [cD.outerB.x, cD.outerB.y, cD.outerB.z]], cD.color, 0.25);
         
@@ -343,12 +342,14 @@
 
       } else if (step.type === 'TETRA_GEN5') {
         const cD = step.data;
-        // Dynamischer Kantenaufbau der 5. Generation, gesteuert durch gen5Factor
-        const d1 = cD.length * gen5Factor;
+        
         const vec45_A = new THREE.Vector3().addVectors(cD.ortho1, cD.ortho2).normalize();
         const vec45_B = new THREE.Vector3().subVectors(cD.ortho1, cD.ortho2).normalize();
-        const tetraP3 = cD.outerA.clone().addScaledVector(cD.dir, cD.length / 2).addScaledVector(vec45_A, d1);
+        
+        const d1 = cD.length * 1.05;
         const height = (6 * cD.volume) / (cD.length * d1);
+
+        const tetraP3 = cD.outerA.clone().addScaledVector(cD.dir, cD.length / 2).addScaledVector(vec45_A, d1);
         const tetraP4 = cD.outerA.clone().addScaledVector(cD.dir, cD.length / 2).addScaledVector(vec45_B, height);
 
         createColoredTetra([[tetraP3.x, tetraP3.y, tetraP3.z], [tetraP4.x, tetraP4.y, tetraP4.z], [cD.outerA.x, cD.outerA.y, cD.outerA.z], [cD.outerB.x, cD.outerB.y, cD.outerB.z]], cD.color, 0.2);
