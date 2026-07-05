@@ -2,7 +2,7 @@
 <html lang="de">
 <head>
   <meta charset="UTF-8" />
-  <title>Kubus-Kaskade – RVT v16 (Globale Generations-Asymmetrie)</title>
+  <title>Kubus-Kaskade – RVT v16</title>
   <style>
     body { margin: 0; overflow: hidden; background: #000; color: #fff; font-family: sans-serif; }
     #info {
@@ -12,7 +12,7 @@
       padding: 8px 12px;
       background: rgba(0,0,0,0.8);
       border-radius: 4px;
-      font-size: 12px;
+      font-size: 14px;
       line-height: 1.4;
       border: 1px solid #334;
       z-index: 10;
@@ -21,12 +21,7 @@
 </head>
 <body>
   <div id="info">
-    <strong>RVT v16 – Globale Kanten-Disjunktion</strong><br/>
-    • Taktung: Exakt 1,5 Sekunden pro Einzelelement.<br/>
-    • 45°-Kopplung: Zu den Kubusflächen in jeder Generation strikt gewahrt.<br/>
-    • Globaler Kanten-Ausschluss: Alle 6 Tetraeder der 1. Generation besitzen untereinander vollkommen ungleiche Kantenlängen.<br/>
-    • Windschiefe Raummatrix: Volle mathematische Varianz pro Kantenindex.<br/>
-    • Zyklus-Gedächtnis: Kantenlängen der 1. Generation werden pro Zyklus gespeichert und gegen alle vorherigen Zyklen abgeglichen – jeder neue Zyklus erzeugt ein neues Gebilde.<br/>
+    <strong>Kubus-Kaskade</strong><br/>
     <span id="cycleInfo">Zyklus: 1</span>
   </div>
 
@@ -53,24 +48,22 @@
     let rotationAngle = 0;
     let isBuilding = true;
     
-    const START_RADIUS = 6.0;      
-    const MAX_ZOOM_RADIUS = 320.0;  
+    const START_RADIUS = 15.0;      
+    const MAX_ZOOM_RADIUS = 130.0;  
     let currentRadius = START_RADIUS;
     
     let timeActiveTotal = 0;
     let timeSinceLastStep = 0;
     let timeSinceBuildEnd = 0;
     
-    const ELEMENT_STEP_DURATION = 1.5; 
+    // Aufbaugeschwindigkeit auf 0.3 Sekunden angepasst
+    const ELEMENT_STEP_DURATION = 0.3; 
     const totalStepsInCycle = 54; 
     const TOTAL_BUILD_DURATION = totalStepsInCycle * ELEMENT_STEP_DURATION; 
 
     const resetTimer = 15.0;       
     let cycleCount = 0; 
 
-    // Speicher fuer die Kantenlaengen der 1. Generation Tetraeder - bleibt ueber
-    // initCascade()-Aufrufe (= neue Zyklen) hinweg erhalten.
-    // Struktur: generationEdgeHistory[zyklusIndex][kantenIndex] = [l_A_P3, l_A_P4, l_B_P3, l_B_P4, l_P3_P4]
     let generationEdgeHistory = [];
 
     function generateTetraEdgeColors(baseEdgeColor) {
@@ -148,8 +141,6 @@
       return kantenMuster;
     }
 
-    // Berechnet die 5 freien Kantenlaengen eines 1.-Generation-Tetraeders
-    // (die 6. Kante outerA-outerB ist die geteilte Kubuskante und daher fix).
     function computeFreeEdgeLengths(outerA, outerB, tetraP3, tetraP4) {
       return [
         outerA.distanceTo(tetraP3),
@@ -160,8 +151,6 @@
       ];
     }
 
-    // Prueft, ob die neuen Kantenlaengen (fuer einen bestimmten Kanten-Index)
-    // mit einem beliebigen fruehreren Zyklus identisch sind.
     function isDisjointFromHistory(newLengths, kantenIndex, tolerance = 0.0015) {
       for (let z = 0; z < generationEdgeHistory.length; z++) {
         const vorherigesSet = generationEdgeHistory[z] && generationEdgeHistory[z][kantenIndex];
@@ -172,8 +161,6 @@
       return true;
     }
 
-    // Speichert die Kantenlaengen der 1. Generation fuer den aktuellen Zyklus,
-    // damit alle folgenden Zyklen jederzeit dagegen abgleichen koennen.
     function speichereGen1Kantenlaengen(kantenIndex, laengen) {
       const zyklusSlot = cycleCount - 1;
       if (!generationEdgeHistory[zyklusSlot]) generationEdgeHistory[zyklusSlot] = [];
@@ -242,7 +229,7 @@
 
       const cycleInfoEl = document.getElementById('cycleInfo');
       if (cycleInfoEl) {
-        cycleInfoEl.textContent = `Zyklus: ${cycleCount} (Abgleich gegen ${generationEdgeHistory.length} vorherige Zyklen aktiv)`;
+        cycleInfoEl.textContent = `Zyklus: ${cycleCount}`;
       }
 
       let P1 = [0.0, 2.5, 0.4];
@@ -307,28 +294,19 @@
         animationQueue.push({ type: 'TETRA_GEN2', edgeIndex: step.edgeIndex, data: { ...cubeData, volume: step.data.volume, color: step.data.color } });
 
       } else if (step.type === 'TETRA_GEN2') {
-        // GENERATION 1 DER AUFBAU-TETRAEDER (6 Tetraeder auf den 6 Fugen)
         const cD = step.data;
-        const idx = step.edgeIndex; // Wert von 0 bis 5 für absolute mathematische Disjunktion
+        const idx = step.edgeIndex;
         
-        // Strikt gewahrte 45-Grad-Ausrichtung zur Kubusfläche:
         const vec45_A = new THREE.Vector3().addVectors(cD.ortho1, cD.ortho2).normalize();
         const vec45_B = new THREE.Vector3().subVectors(cD.ortho1, cD.ortho2).normalize();
 
-        // Zyklus-Offset: sorgt zusaetzlich zum Index 'idx' dafuer, dass jeder neue
-        // Zyklus (2., 3., ...) ein komplett neues Gebilde erzeugt. Bei einer
-        // Kollision mit einem fruehreren Zyklus wird er iterativ nachgeschaerft.
         let zyklusOffset = (cycleCount - 1) * 0.11;
         let tetraP3, tetraP4, freieKanten;
         let sicherheitsZaehler = 0;
 
         do {
-          // Globale Disjunktion: Jedes der 6 Tetraeder erhält über 'idx' UND über
-          // den zyklusabhängigen 'zyklusOffset' komplett andere Skalierungsfaktoren
           const d1 = cD.length * (1.10 + idx * 0.08 + zyklusOffset);
           const height = ((6 * cD.volume) / (cD.length * d1)) * (0.75 - idx * 0.04);
-
-          // Ein indexbasierter linearer Shift entlang der Kante (dir) garantiert, dass alle 6x5 freien Kanten untereinander disjunkt sind
           const shiftAsym = cD.dir.clone().multiplyScalar(cD.length * (0.05 + idx * 0.03 + zyklusOffset * 0.4));
 
           tetraP3 = cD.outerA.clone().addScaledVector(cD.dir, cD.length / 2).add(shiftAsym).addScaledVector(vec45_A, d1);
@@ -337,14 +315,11 @@
           freieKanten = computeFreeEdgeLengths(cD.outerA, cD.outerB, tetraP3, tetraP4);
 
           if (isDisjointFromHistory(freieKanten, idx)) break;
-          zyklusOffset += 0.05; // gegen alle bisherigen Zyklen noch nicht disjunkt -> nachschaerfen
+          zyklusOffset += 0.05;
           sicherheitsZaehler++;
         } while (sicherheitsZaehler < 25);
 
-        // Kantenlängen dieser 1.-Generation-Tetraeder dauerhaft speichern, damit
-        // Zyklus 2, 3, ... jederzeit dagegen abgleichen können.
         speichereGen1Kantenlaengen(idx, freieKanten);
-        console.log(`Zyklus ${cycleCount} | Tetraeder #${idx} | freie Kantenlängen:`, freieKanten.map(l => l.toFixed(4)));
 
         createColoredTetra([[tetraP3.x, tetraP3.y, tetraP3.z], [tetraP4.x, tetraP4.y, tetraP4.z], [cD.outerA.x, cD.outerA.y, cD.outerA.z], [cD.outerB.x, cD.outerB.y, cD.outerB.z]], cD.color, 0.35);
         
@@ -432,7 +407,7 @@
       requestAnimationFrame(animate);
       const delta = clock.getDelta();
 
-      rotationAngle += delta * 0.45; 
+      rotationAngle += delta * 0.9; 
 
       if (isBuilding) {
         timeSinceLastStep += delta;
@@ -448,7 +423,7 @@
         }
 
         const progressFactor = Math.min(timeActiveTotal / TOTAL_BUILD_DURATION, 1.0);
-        const slowedProgress = Math.pow(progressFactor, 1.5); 
+        const slowedProgress = Math.pow(progressFactor, 1.8); 
         
         currentRadius = START_RADIUS + slowedProgress * (MAX_ZOOM_RADIUS - START_RADIUS);
 
@@ -462,8 +437,8 @@
       camera.position.x = Math.sin(rotationAngle) * currentRadius;
       camera.position.z = Math.cos(rotationAngle) * currentRadius;
       
-      camera.position.y = 3.0 + (currentRadius - START_RADIUS) * 0.15; 
-      camera.lookAt(0, 1.5, 0);
+      camera.position.y = 5.0 + (currentRadius - START_RADIUS) * 0.12; 
+      camera.lookAt(0, 3.0, 0);
 
       renderer.render(scene, camera);
     }
