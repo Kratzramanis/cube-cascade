@@ -1,0 +1,321 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8" />
+  <title>Kubus-Kaskade – RVT v16 (Hybrid korrigiert)</title>
+  <style>
+    body { margin: 0; overflow: hidden; background: #000; color: #fff; font-family: sans-serif; }
+    #info {
+      position: absolute;
+      top: 10px;
+      left: 10px;
+      padding: 8px 12px;
+      background: rgba(0,0,0,0.85);
+      border-radius: 4px;
+      font-size: 14px;
+      line-height: 1.4;
+      border: 1px solid #445;
+      z-index: 10;
+    }
+  </style>
+</head>
+<body>
+  <div id="info">
+    <strong>Kubus-Kaskade RVT v16 (Hybrid)</strong><br/>
+    <span id="cycleInfo">Zyklus: 1</span>
+  </div>
+
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+  <script>
+    const scene = new THREE.Scene();
+    scene.background = new THREE.Color(0x020205);
+
+    const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 8000);
+    const renderer = new THREE.WebGLRenderer({ antialias: true });
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    document.body.appendChild(renderer.domElement);
+
+    const ambient = new THREE.AmbientLight(0xffffff, 0.75);
+    scene.add(ambient);
+    const dirLight = new THREE.DirectionalLight(0xffffff, 0.9);
+    dirLight.position.set(20, 40, 30);
+    scene.add(dirLight);
+
+    let dynamicMeshes = [];
+    let animationQueue = [];
+    let rotationAngle = 0;
+    let isBuilding = true;
+    let currentRadius = 30.0;
+    let targetRadius = 30.0;
+    const boundingBox = new THREE.Box3();
+    let timeSinceLastStep = 0;
+    let timeSinceBuildEnd = 0;
+    const ELEMENT_STEP_DURATION = 0.15;
+    const resetTimer = 15.0;
+    let cycleCount = 0;
+
+    let generationEdgeHistory = [];
+    let savedTetraValues = [];
+
+    function generateTetraEdgeColors(baseEdgeColor) {
+      if (baseEdgeColor === 0xff0000) {
+        return { "0-1": 0x0000ff, "0-2": 0x0000ff, "1-2": 0xff0000, "0-3": 0xff0000, "1-3": 0x0000ff, "2-3": 0xff0000 };
+      } else {
+        return { "0-1": 0xff0000, "0-2": 0xff0000, "1-2": 0x0000ff, "0-3": 0x0000ff, "1-3": 0xff0000, "2-3": 0x0000ff };
+      }
+    }
+
+    function updateBoundingBox(points) {
+      points.forEach(pt => boundingBox.expandByPoint(new THREE.Vector3(...pt)));
+      calculateGanzkoerperRadius();
+    }
+
+    function calculateGanzkoerperRadius() {
+      const size = new THREE.Vector3();
+      boundingBox.getSize(size);
+      const maxDim = Math.max(size.x, size.y, size.z);
+      const fovRad = (camera.fov * Math.PI) / 180;
+      let calculatedRadius = maxDim / (2 * Math.tan(fovRad / 2)) * 1.45;
+      targetRadius = Math.max(calculatedRadius, 25.0);
+    }
+
+    function normalizeEdgeLength(baseLength, generation, maxBase = 4.5) {
+      let scaled = baseLength * (0.94 - generation * 0.017);
+      return Math.max(0.9, Math.min(maxBase, scaled));
+    }
+
+    function createColoredTetra(points, baseEdgeColor, opacity = 0.45) {
+      const p = points.map(pt => new THREE.Vector3(...pt));
+      const kantenMuster = generateTetraEdgeColors(baseEdgeColor);
+      updateBoundingBox(points);
+
+      function getLocalKantenFarbe(i1, i2) {
+        const key = i1 < i2 ? `${i1}-${i2}` : `${i2}-${i1}`;
+        return kantenMuster[key];
+      }
+
+      const flächenDefinitionen = [
+        { Indizes: [0,1,2], pts: [p[0],p[1],p[2]] },
+        { Indizes: [0,1,3], pts: [p[0],p[1],p[3]] },
+        { Indizes: [0,2,3], pts: [p[0],p[2],p[3]] },
+        { Indizes: [1,2,3], pts: [p[1],p[2],p[3]] }
+      ];
+
+      flächenDefinitionen.forEach(f => {
+        const c1 = getLocalKantenFarbe(f.Indizes[0], f.Indizes[1]);
+        const c2 = getLocalKantenFarbe(f.Indizes[0], f.Indizes[2]);
+        const c3 = getLocalKantenFarbe(f.Indizes[1], f.Indizes[2]);
+        let r = 0, b = 0;
+        [c1,c2,c3].forEach(c => { if (c === 0xff0000) r += 85; if (c === 0x0000ff) b += 85; });
+        const mixedHex = (r << 16) | (0x11 << 8) | b;
+
+        const geom = new THREE.BufferGeometry();
+        const vertices = new Float32Array([f.pts[0].x,f.pts[0].y,f.pts[0].z, f.pts[1].x,f.pts[1].y,f.pts[1].z, f.pts[2].x,f.pts[2].y,f.pts[2].z]);
+        geom.setAttribute('position', new THREE.BufferAttribute(vertices, 3));
+        geom.computeVertexNormals();
+
+        const mat = new THREE.MeshPhongMaterial({ color: mixedHex, transparent: true, opacity: opacity, side: THREE.DoubleSide });
+        const mesh = new THREE.Mesh(geom, mat);
+        scene.add(mesh);
+        dynamicMeshes.push(mesh);
+      });
+
+      const kantenPaare = [[0,1],[0,2],[1,2],[0,3],[1,3],[2,3]];
+      kantenPaare.forEach(paar => {
+        const col = getLocalKantenFarbe(paar[0], paar[1]);
+        const lineGeom = new THREE.BufferGeometry().setFromPoints([p[paar[0]], p[paar[1]]]);
+        const line = new THREE.Line(lineGeom, new THREE.LineBasicMaterial({ color: col, linewidth: 2 }));
+        scene.add(line);
+        dynamicMeshes.push(line);
+      });
+
+      return kantenMuster;
+    }
+
+    function buildCubeOnEdgeAligned(pA, pB, referenceNormal, colorRGB, opacity = 0.55, invertAngle = false) {
+      const edgeVec = new THREE.Vector3().subVectors(pB, pA);
+      const length = edgeVec.length();
+      const dir = edgeVec.clone().normalize();
+      const projNormal = referenceNormal.clone().addScaledVector(dir, -referenceNormal.dot(dir)).normalize();
+      const ortho2 = new THREE.Vector3().crossVectors(dir, projNormal).normalize();
+
+      const geom = new THREE.BoxGeometry(length, length, length);
+      const mat = new THREE.MeshPhongMaterial({ color: colorRGB, transparent: true, opacity: opacity });
+      const cube = new THREE.Mesh(geom, mat);
+
+      const angle = invertAngle ? -Math.PI / 4 : Math.PI / 4;
+      const finalNormal = projNormal.clone().multiplyScalar(Math.cos(angle)).add(ortho2.clone().multiplyScalar(Math.sin(angle))).normalize();
+      const finalOrtho2 = new THREE.Vector3().crossVectors(dir, finalNormal).normalize();
+
+      const matrix = new THREE.Matrix4().makeBasis(dir, finalNormal, finalOrtho2);
+      cube.quaternion.setFromRotationMatrix(matrix);
+
+      const mid = new THREE.Vector3().addVectors(pA, pB).multiplyScalar(0.5);
+      const shift = finalNormal.clone().multiplyScalar(length / 2).addScaledVector(finalOrtho2, length / 2);
+      cube.position.copy(mid).add(shift);
+      
+      scene.add(cube);
+      dynamicMeshes.push(cube);
+      boundingBox.expandByPoint(cube.position);
+      calculateGanzkoerperRadius();
+
+      return { outerA: mid.clone().add(shift.clone().multiplyScalar(2)).addScaledVector(dir, -length/2),
+               outerB: mid.clone().add(shift.clone().multiplyScalar(2)).addScaledVector(dir, length/2),
+               length, dir, ortho1: finalNormal, ortho2: finalOrtho2 };
+    }
+
+    function initCascade() {
+      dynamicMeshes.forEach(m => { scene.remove(m); if(m.geometry) m.geometry.dispose(); if(m.material) m.material.dispose(); });
+      dynamicMeshes = [];
+      animationQueue = [];
+      boundingBox.makeEmpty();
+      generationEdgeHistory = [];
+      savedTetraValues = [];
+
+      rotationAngle = 0;
+      isBuilding = true;
+      timeSinceLastStep = 0;
+      timeSinceBuildEnd = 0;
+      currentRadius = targetRadius = 30.0;
+
+      cycleCount++;
+      document.getElementById('cycleInfo').textContent = `Zyklus: ${cycleCount}`;
+
+      let P1 = [0.0, 2.5, 0.4];
+      let P2 = [-2.5, -1.0, 0.0];
+      let P3 = [2.5, -1.5, -0.8];
+      let P4 = [0.4, -0.5, 2.8];
+
+      const vP1 = new THREE.Vector3(...P1);
+      const vP2 = new THREE.Vector3(...P2);
+      const vP3 = new THREE.Vector3(...P3);
+      const vP4 = new THREE.Vector3(...P4);
+
+      const urVolume = Math.abs(new THREE.Vector3().subVectors(vP2,vP1).dot(new THREE.Vector3().subVectors(vP3,vP1).cross(new THREE.Vector3().subVectors(vP4,vP1)))) / 6;
+
+      const initialMap = createColoredTetra([P1, P2, P3, P4], 0xff0000, 0.5);
+
+      const urEdges = [
+        { pts: [vP1, vP2], key: "0-1" },
+        { pts: [vP1, vP3], key: "0-2" },
+        { pts: [vP1, vP4], key: "0-3" },
+        { pts: [vP2, vP3], key: "1-2" },
+        { pts: [vP2, vP4], key: "1-3" },
+        { pts: [vP3, vP4], key: "2-3" }
+      ];
+
+      urEdges.forEach((edge, idx) => {
+        const kantenFarbe = initialMap[edge.key];
+        const normal = new THREE.Vector3(0,1,0);
+        animationQueue.push({ type: 'CUBE_GEN1', edgeIndex: idx, data: { a: edge.pts[0], b: edge.pts[1], volume: urVolume, normal, color: kantenFarbe } });
+      });
+
+      executeNextCascadeStep();
+    }
+
+    function executeNextCascadeStep() {
+      if (animationQueue.length === 0) {
+        isBuilding = false;
+        printFinalPositions();
+        return;
+      }
+      const step = animationQueue.shift();
+
+      if (step.type === 'CUBE_GEN1') {
+        const cubeData = buildCubeOnEdgeAligned(step.data.a, step.data.b, step.data.normal, step.data.color, 0.45, false);
+        animationQueue.push({ type: 'TETRA_GEN2', edgeIndex: step.edgeIndex, data: { ...cubeData, volume: step.data.volume, color: step.data.color } });
+      } 
+      else if (step.type.startsWith('TETRA_GEN')) {
+        const gen = parseInt(step.type.slice(9));
+        const cD = step.data;
+        const idx = step.edgeIndex;
+
+        const vec45_A = new THREE.Vector3().addVectors(cD.ortho1, cD.ortho2).normalize();
+        const vec45_B = new THREE.Vector3().subVectors(cD.ortho1, cD.ortho2).normalize();
+
+        const baseD1 = normalizeEdgeLength(cD.length, gen, 4.5);
+        const d1 = baseD1 * (1.0 + idx * 0.035);
+        const height = (6 * cD.volume) / (cD.length * d1);
+
+        const shiftAsym = cD.dir.clone().multiplyScalar(cD.length * 0.04);
+
+        const tetraP3 = cD.outerA.clone().addScaledVector(cD.dir, cD.length/2).add(shiftAsym).addScaledVector(vec45_A, d1);
+        const tetraP4 = cD.outerA.clone().addScaledVector(cD.dir, cD.length/2).sub(shiftAsym).addScaledVector(vec45_B, height);
+
+        createColoredTetra([[tetraP3.x,tetraP3.y,tetraP3.z], [tetraP4.x,tetraP4.y,tetraP4.z], [cD.outerA.x,cD.outerA.y,cD.outerA.z], [cD.outerB.x,cD.outerB.y,cD.outerB.z]], cD.color, Math.max(0.2, 0.45 - gen*0.05));
+
+        if (gen >= 2) savedTetraValues.push({p3: tetraP3.clone(), p4: tetraP4.clone(), color: cD.color});
+
+        const nextColor = (cD.color === 0xff0000) ? 0x0000ff : 0xff0000;
+        animationQueue.push({ type: `CUBE_GEN${gen}`, edgeIndex: idx, data: { a: tetraP3, b: tetraP4, volume: cD.volume, normal: vec45_A, color: nextColor } });
+      } 
+      else if (step.type.startsWith('CUBE_GEN')) {
+        const gen = parseInt(step.type.slice(8));
+        const cD = step.data;
+
+        if (gen >= 5 && savedTetraValues.length > 0) {
+          const saved = savedTetraValues[Math.floor(Math.random() * savedTetraValues.length)];
+          const cubeData = buildCubeOnEdgeAligned(saved.p3, saved.p4, cD.normal || new THREE.Vector3(0,1,0), saved.color, 0.6, true);
+          animationQueue.push({ type: 'TETRA_GEN2', edgeIndex: 0, data: { ...cubeData, volume: cD.volume, color: saved.color } });
+        } else {
+          const cubeData = buildCubeOnEdgeAligned(cD.a, cD.b, cD.normal, cD.color, 0.55, true);
+          animationQueue.push({ type: `TETRA_GEN${gen+1}`, edgeIndex: cD.edgeIndex || 0, data: { ...cubeData, volume: cD.volume, color: cD.color } });
+        }
+      }
+    }
+
+    function printFinalPositions() {
+      console.log(`\n=== Kaskade ${cycleCount} abgeschlossen ===`);
+      let avgPos = new THREE.Vector3();
+      let count = 0;
+      dynamicMeshes.forEach(mesh => {
+        if (mesh.position) {
+          avgPos.add(mesh.position);
+          count++;
+        }
+      });
+      if (count > 0) {
+        avgPos.divideScalar(count);
+        console.log("Gemittelte Position der letzten Elemente:", avgPos.toArray());
+      }
+    }
+
+    initCascade();
+
+    const clock = new THREE.Clock();
+
+    function animate() {
+      requestAnimationFrame(animate);
+      const delta = clock.getDelta();
+      rotationAngle += delta * 0.85;
+
+      if (isBuilding) {
+        timeSinceLastStep += delta;
+        if (timeSinceLastStep >= ELEMENT_STEP_DURATION) {
+          executeNextCascadeStep();
+          timeSinceLastStep = 0;
+        }
+      } else {
+        timeSinceBuildEnd += delta;
+        if (timeSinceBuildEnd > resetTimer) initCascade();
+      }
+
+      currentRadius += (targetRadius - currentRadius) * delta * 4.0;
+      camera.position.x = Math.sin(rotationAngle) * currentRadius;
+      camera.position.z = Math.cos(rotationAngle) * currentRadius;
+      camera.position.y = 6.0 + currentRadius * 0.12;
+      camera.lookAt(0, 3.0, 0);
+
+      renderer.render(scene, camera);
+    }
+
+    animate();
+
+    window.addEventListener('resize', () => {
+      camera.aspect = window.innerWidth / window.innerHeight;
+      camera.updateProjectionMatrix();
+      renderer.setSize(window.innerWidth, window.innerHeight);
+    });
+  </script>
+</body>
+</html>
