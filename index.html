@@ -2,7 +2,7 @@
 <html lang="de">
 <head>
   <meta charset="UTF-8" />
-  <title>Kubus-Kaskade – RVT v16 – GitHub Safe Edition</title>
+  <title>Kubus-Kaskade – RVT v16 – Clean Labels Edition</title>
   <style>
     body { margin: 0; overflow: hidden; background: #000; color: #fff; font-family: sans-serif; }
     #info {
@@ -44,7 +44,6 @@
     <div id="winkelInfo">Warte auf Zyklusende...</div>
   </div>
 
-  <!-- Absolut sicheres HTTPS-CDN für GitHub -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
   <script>
     const scene = new THREE.Scene();
@@ -451,10 +450,11 @@
 
       const initialMap = createColoredTetra([P1, P2, P3, P4], 0xff0000, 0.5);
 
-      create3DLabel("Ur-Tetra", urTetraederMittelpunkt.clone().add(new THREE.Vector3(0, 2, 0)));
+      // Ur-Tetraeder Label mit sicherem Versatz nach oben
+      create3DLabel("Ur-Tetra", urTetraederMittelpunkt.clone().add(new THREE.Vector3(0, 5.0, 0)));
       
       const neonMat = new THREE.LineBasicMaterial({ color: 0x00ff00, linewidth: 2 });
-      const lineGeom = new THREE.BufferGeometry().setFromPoints([urTetraederMittelpunkt, urTetraederMittelpunkt.clone().add(new THREE.Vector3(0, 2, 0))]);
+      const lineGeom = new THREE.BufferGeometry().setFromPoints([urTetraederMittelpunkt, urTetraederMittelpunkt.clone().add(new THREE.Vector3(0, 5.0, 0))]);
       const line = new THREE.Line(lineGeom, neonMat);
       scene.add(line);
       dynamicMeshes.push(line);
@@ -564,21 +564,25 @@
 
         createColoredTetra([[tetraP3.x, tetraP3.y, tetraP3.z], [tetraP4.x, tetraP4.y, tetraP4.z], [cD.outerA.x, cD.outerA.y, cD.outerA.z], [cD.outerB.x, cD.outerB.y, cD.outerB.z]], cD.color, 0.35 - (idx * 0.02));
         
+        // Berechnung des Tetraeder-Schwerpunkts
         const tetraMP = new THREE.Vector3(
           (tetraP3.x + tetraP4.x + cD.outerA.x + cD.outerB.x) / 4,
           (tetraP3.y + tetraP4.y + cD.outerA.y + cD.outerB.y) / 4,
           (tetraP3.z + tetraP4.z + cD.outerA.z + cD.outerB.z) / 4
         );
 
+        // REKALIBRIERUNG: Von 3.5 auf 7.5 erhöht für maximalen, kollisionsfreien Abstand nach außen!
         const vonMitte = new THREE.Vector3().subVectors(tetraMP, urTetraederMittelpunkt).normalize();
-        const labelPos = tetraMP.clone().addScaledVector(vonMitte, 3.5); 
+        const labelPos = tetraMP.clone().addScaledVector(vonMitte, 7.5); 
 
+        // Verlängerte neongrüne Verbindungslinie zeichnen
         const neonMaterial = new THREE.LineBasicMaterial({ color: 0x00ff00, linewidth: 2 });
         const labelLineGeom = new THREE.BufferGeometry().setFromPoints([tetraMP, labelPos]);
         const labelLine = new THREE.Line(labelLineGeom, neonMaterial);
         scene.add(labelLine);
         dynamicMeshes.push(labelLine);
 
+        // Erzeugung des verschobenen 3D-Labels
         create3DLabel(`${genNumber}.${zweigNummer}`, labelPos);
         
         let nextCubeColor = (cD.color === 0xff0000) ? 0x0000ff : 0xff0000;
@@ -631,7 +635,6 @@
       renderer.render(scene, camera);
     }
 
-    // Absolute GitHub-Sicherheit: Erst ausführen, wenn das DOM voll da ist
     window.onload = function() {
       initCascade();
       clock.start();
