@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8">
+  <title>Asymmetrisches Tetraeder - Werte-Mittelpunkt Matrix</title>
+  <style>
+    body { margin: 0; overflow: hidden; background: #030308; color: #fff; font-family: monospace; }
+    #hud {
+      position: absolute;
+      top: 10px;
+      left: 10px;
+      padding: 15px;
+      background: rgba(0, 5, 15, 0.85);
+      border: 1px solid #00ffaa;
+      border-radius: 4px;
+      font-size: 12px;
+      z-index: 10;
+      width: 320px;
+      pointer-events: none;
+    }
+    .hud-title { color: #00ffaa; font-weight: bold; margin-bottom: 8px; border-bottom: 1px solid #00ffaa; padding-bottom: 3px;}
+    .value { color: #ffaa00; }
+  </style>
+</head>
+<body>
+
+  <div id="hud">
+    <div class="hud-title">RVT ASYMMETRY TELEMETRY</div>
+    <div>A: <span class="value">(0.0, 5.0, 0.5)</span></div>
+    <div>B: <span class="value">(-4.0, -2.0, -1.0)</span></div>
+    <div>C: <span class="value">(5.0, -3.0, -2.0)</span></div>
+    <div>D: <span class="value">(1.0, -1.0, 6.0)</span></div>
+    <hr style="border:0; border-top:1px dashed #00ffaa; margin:8px 0;">
+    <div class="hud-title" style="color:#00ffff; border-color:#00ffff;">FLÄCHENGEWICHTE (12 WINKEL)</div>
+    <div>Fläche BCD (gegenüber A): <span id="wA" class="value">...</span></div>
+    <div>Fläche ACD (gegenüber B): <span id="wB" class="value">...</span></div>
+    <div>Fläche ABD (gegenüber C): <span id="wC" class="value">...</span></div>
+    <div>Fläche ABC (gegenüber D): <span id="wD" class="value">...</span></div>
+    <hr style="border:0; border-top:1px dashed #00ffff; margin:8px 0;">
+    <div>Werte-Mittelpunkt:<br><span id="midPoint" style="color:#ff0055; font-weight:bold;">...</span></div>
+  </div>
+
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+  <script>
+    // --- 1. Szene & Kamera Setup ---
+    const scene = new THREE.Scene();
+    const camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 1000);
+    const renderer = new THREE.WebGLRenderer({ antialias: true });
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    document.body.appendChild(renderer.domElement);
+
+    scene.add(new THREE.AmbientLight(0xffffff, 0.6));
+    const dirLight = new THREE.DirectionalLight(0xffffff, 0.8);
+    dirLight.position.set(10, 20, 15);
+    scene.add(dirLight);
+
+    // --- 2. Asymmetrische Eckpunkte definieren ---
+    const A = new THREE.Vector3(0.0, 5.0, 0.5);
+    const B = new THREE.Vector3(-4.0, -2.0, -1.0);
+    const C = new THREE.Vector3(5.0, -3.0, -2.0);
+    const D = new THREE.Vector3(1.0, -1.0, 6.0);
+
+    // --- 3. Mathematische Logik für den Werte-Mittelpunkt ---
+    function getTriangleArea(p1, p2, p3) {
+      const v1 = new THREE.Vector3().subVectors(p2, p1);
+      const v2 = new THREE.Vector3().subVectors(p3, p1);
+      return new THREE.Vector3().crossVectors(v1, v2).length() * 0.5;
+    }
+
+    // Berechnung der 4 asymmetrischen Flächengewichte
+    const area_A = getTriangleArea(B, C, D); // Gegenüber A
+    const area_B = getTriangleArea(A, C, D); // Gegenüber B
+    const area_C = getTriangleArea(A, B, D); // Gegenüber C
+    const area_D = getTriangleArea(A, B, C); // Gegenüber D
+
+    document.getElementById('wA').innerText = area_A.toFixed(2);
+    document.getElementById('wB').innerText = area_B.toFixed(2);
+    document.getElementById('wC').innerText = area_C.toFixed(2);
+    document.getElementById('wD').innerText = area_D.toFixed(2);
+
+    // Gewichteter Werte-Mittelpunkt W (Inwert-Zentrum)
+    const totalArea = area_A + area_B + area_C + area_D;
+    const W = new THREE.Vector3(
+      (area_A * A.x + area_B * B.x + area_C * C.x + area_D * D.x) / totalArea,
+      (area_A * A.y + area_B * B.y + area_C * C.y + area_D * D.y) / totalArea,
+      (area_A * A.z + area_B * B.z + area_C * C.z + area_D * D.z) / totalArea
+    );
+
+    document.getElementById('midPoint').innerText = `X: ${W.x.toFixed(3)}\nY: ${W.y.toFixed(3)}\nZ: ${W.z.toFixed(3)}`;
+
+    // Flächenschwerpunkte berechnen (Die Basispunkte deiner Konstruktionslinien)
+    const S_BCD = new THREE.Vector3().add(B).add(C).add(D).divideScalar(3);
+    const S_ACD = new THREE.Vector3().add(A).add(C).add(D).divideScalar(3);
+    const S_ABD = new THREE.Vector3().add(A).add(B).add(D).divideScalar(3);
+    const S_ABC = new THREE.Vector3().add(A).add(B).add(C).divideScalar(3);
+
+    // --- 4. Visuelle Objekte erstellen ---
+    
+    // Urtetraeder Außenkanten zeichnen
+    function drawEdge(p1, p2, colorHex) {
+      const geom = new THREE.BufferGeometry().setFromPoints([p1, p2]);
+      const mat = new THREE.LineBasicMaterial({ color: colorHex, linewidth: 2 });
+      scene.add(new THREE.Line(geom, mat));
+    }
+    // Außenhülle (Blau/Rot asymmetrisch gesplittet)
+    drawEdge(A, B, 0xff0000); drawEdge(A, C, 0x0000ff); drawEdge(A, D, 0xff0000);
+    drawEdge(B, C, 0x0000ff); drawEdge(B, D, 0xff0000); drawEdge(C, D, 0x0000ff);
+
+    // Deine inneren Konstruktionslinien zeichnen (Grün)
+    function drawInternalLine(fromNode, toFaceCenter) {
+      const geom = new THREE.BufferGeometry().setFromPoints([fromNode, toFaceCenter]);
+      const mat = new THREE.LineBasicMaterial({ color: 0x00ff77, dashSize: 0.2, gapSize: 0.1 });
+      const line = new THREE.Line(geom, mat);
+      scene.add(line);
+    }
+    drawInternalLine(A, S_BCD);
+    drawInternalLine(B, S_ACD);
+    drawInternalLine(C, S_ABD);
+    drawInternalLine(D, S_ABC);
+
+    // Die Punkte visualisieren
+    function drawSphere(position, colorHex, radius) {
+      const geom = new THREE.SphereGeometry(radius, 16, 16);
+      const mat = new THREE.MeshPhongMaterial({ color: colorHex, emissive: colorHex, emissiveIntensity: 0.5 });
+      const mesh = new THREE.Mesh(geom, mat);
+      mesh.position.copy(position);
+      scene.add(mesh);
+    }
+    // Die 4 Ecken (Weiß)
+    drawSphere(A, 0xffffff, 0.15); drawSphere(B, 0xffffff, 0.15); drawSphere(C, 0xffffff, 0.15); drawSphere(D, 0xffffff, 0.15);
+    // Die 4 Flächenmitten (Grün)
+    drawSphere(S_BCD, 0x00ff77, 0.1); drawSphere(S_ACD, 0x00ff77, 0.1); drawSphere(S_ABD, 0x00ff77, 0.1); drawSphere(S_ABC, 0x00ff77, 0.1);
+    // Der absolute Werte-Mittelpunkt (Leuchtend Rot)
+    drawSphere(W, 0xff0055, 0.22);
+
+    // --- 5. Animation & Kameraführung ---
+    let angle = 0;
+    camera.position.set(0, 5, 15);
+
+    function animate() {
+      requestAnimationFrame(animate);
+      angle += 0.008;
+      
+      // Kamera rotiert kontrolliert um den berechneten Werte-Mittelpunkt W
+      camera.position.x = W.x + Math.sin(angle) * 14;
+      camera.position.z = W.z + Math.cos(angle) * 14;
+      camera.position.y = W.y + 6;
+      camera.lookAt(W);
+
+      renderer.render(scene, camera);
+    }
+    
+    window.addEventListener('resize', () => {
+      camera.aspect = window.innerWidth / window.innerHeight;
+      camera.updateProjectionMatrix();
+      renderer.setSize(window.innerWidth, window.innerHeight);
+    });
+
+    animate();
+  </script>
+</body>
+</html>
