@@ -1,0 +1,242 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8" />
+  <title>Kubus-Kaskade – RVT v16 – Extended HUD + Asymmetrisches Tetraeder</title>
+  <style>
+    body { margin: 0; overflow: hidden; background: #000; color: #fff; font-family: sans-serif; }
+    #info { position: absolute; top: 10px; left: 10px; padding: 12px 16px; background: rgba(0,0,0,0.85); border-radius: 6px; font-size: 13px; line-height: 1.4; border: 1px solid #334; z-index: 10; max-height: 95vh; overflow-y: auto; width: 280px; }
+    #info strong { display: block; background: rgba(50,50,50,0.7); padding: 4px 8px; border-radius: 4px; margin-bottom: 4px; color: #00ffaa; }
+    #cycleInfo { color: #00ffff; font-family: monospace; }
+    #urVolumenInfo { color: #00ff00; font-family: monospace; }
+    #volumenTelemetrie { color: #ffff00; font-family: monospace; }
+    #spitzenInfo { color: #ff00ff; font-family: monospace; }
+    #winkelInfo { color: #ffaa00; font-family: monospace; }
+    #rightHUD { position: absolute; top: 10px; right: 10px; padding: 12px 16px; background: rgba(0,0,0,0.85); border-radius: 6px; font-size: 11px; border: 1px solid #334; z-index: 10; width: 340px; max-height: 95vh; overflow-y: auto; }
+    .hud-label-row { display: flex; flex-direction: column; gap: 3px; padding: 6px 8px; background: rgba(0, 255, 170, 0.08); border: 1px solid #00ffaa; border-radius: 4px; font-family: monospace; color: #00ffaa; }
+    .hud-meta { display: flex; justify-content: space-between; font-weight: bold; border-bottom: 1px dashed rgba(0, 255, 170, 0.2); padding-bottom: 2px; }
+    .hud-pos { color: #ffaa00; font-size: 10px; }
+    .hud-wm { color: #ff0055; font-size: 10px; font-weight: bold; }
+    .hud-metrics { color: #00ffff; display: flex; justify-content: space-between; font-size: 9px; }
+    #lineCanvas { position: absolute; top: 0; left: 0; width: 100vw; height: 100vh; pointer-events: none; z-index: 5; }
+    #small-tetra { position: absolute; bottom: 20px; right: 20px; width: 180px; height: 180px; border: 1px solid #00ffaa; border-radius: 8px; background: rgba(0,0,0,0.7); z-index: 15; }
+  </style>
+</head>
+<body>
+  <div id="info">
+    <strong>Kubus-Kaskade (Generation 1 bis 5)</strong>
+    <span id="cycleInfo">Zyklus: 1</span>
+    <hr style="border:0; border-top:1px solid #334; margin:6px 0;"/>
+    <strong>Volumen Ur-Tetraeder:</strong>
+    <span id="urVolumenInfo">Berechne...</span>
+    <hr style="border:0; border-top:1px solid #334; margin:6px 0;"/>
+    <strong>Einzel-Volumen der Generationen:</strong>
+    <div id="volumenTelemetrie">Warte auf Berechnung...</div>
+    <hr style="border:0; border-top:1px solid #334; margin:6px 0;"/>
+    <strong>Spitzen Gen 5 (Distanz zum MP):</strong>
+    <div id="spitzenInfo">Warte auf Generation 5...</div>
+    <hr style="border:0; border-top:1px solid #334; margin:6px 0;"/>
+    <strong>Minimaler Winkel zum Nachbarn:</strong>
+    <div id="winkelInfo">Warte auf Zyklusende...</div>
+  </div>
+  <div id="rightHUD">
+    <div style="text-align: center; font-weight: bold; font-size: 11px; color: #888;">RVT ASYMMETRY & MATRIX METRICS</div>
+    <div id="hud-labels-container" style="display: flex; flex-direction: column; gap: 6px;"></div>
+    <hr style="border:0; border-top:1px solid #334; margin:8px 0;">
+    <div style="color:#00ffff; font-weight:bold;">ASYMMETRISCHES TETRAEDER</div>
+    <div id="asym-hud" style="font-size:12px; line-height:1.5;"></div>
+  </div>
+  <canvas id="lineCanvas"></canvas>
+  <canvas id="small-tetra"></canvas>
+
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+  <script>
+    const scene = new THREE.Scene();
+    scene.background = new THREE.Color(0x020205);
+    const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 8000);
+    const renderer = new THREE.WebGLRenderer({ antialias: true });
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    document.body.appendChild(renderer.domElement);
+
+    const canvas2d = document.getElementById('lineCanvas');
+    const ctx2d = canvas2d.getContext('2d');
+
+    function resizeCanvas2D() {
+      canvas2d.width = window.innerWidth;
+      canvas2d.height = window.innerHeight;
+    }
+    window.addEventListener('resize', resizeCanvas2D);
+
+    const ambient = new THREE.AmbientLight(0xffffff, 0.75);
+    scene.add(ambient);
+    const dirLight = new THREE.DirectionalLight(0xffffff, 0.9);
+    dirLight.position.set(20, 40, 30);
+    scene.add(dirLight);
+
+    let dynamicMeshes = [];
+    let trackingPoints = [];
+    let animationQueue = [];
+    let rotationAngle = 0;
+    let isBuilding = true;
+    let currentRadius = 30.0;
+    let targetRadius = 30.0;
+    const boundingBox = new THREE.Box3();
+    let timeSinceLastStep = 0;
+    let timeSinceBuildEnd = 0;
+    const ELEMENT_STEP_DURATION = 0.075;
+    const resetTimer = 7.0;
+    let cycleCount = 0;
+    const MAX_EDGE_LIMIT = 5.0;
+    let generationEdgeHistory = [];
+    let gen5SpitzenDistanzen = {};
+    let volumenLogDaten = {};
+    let gen5SpitzenObjekte = [];
+    let yellowLinesCreated = false;
+    let urTetraederMittelpunkt = new THREE.Vector3();
+    const clock = new THREE.Clock();
+
+    // === ASYMMETRISCHES TETRAEDER ===
+    const A = new THREE.Vector3(0.0, 5.0, 0.5);
+    const B = new THREE.Vector3(-4.0, -2.0, -1.0);
+    const C = new THREE.Vector3(5.0, -3.0, -2.0);
+    const D = new THREE.Vector3(1.0, -1.0, 6.0);
+
+    function getTriangleArea(p1, p2, p3) {
+      const v1 = new THREE.Vector3().subVectors(p2, p1);
+      const v2 = new THREE.Vector3().subVectors(p3, p1);
+      return new THREE.Vector3().crossVectors(v1, v2).length() * 0.5;
+    }
+
+    function updateAsymHUD() {
+      const area_A = getTriangleArea(B, C, D);
+      const area_B = getTriangleArea(A, C, D);
+      const area_C = getTriangleArea(A, B, D);
+      const area_D = getTriangleArea(A, B, C);
+      const totalArea = area_A + area_B + area_C + area_D;
+
+      const W = new THREE.Vector3(
+        (area_A * A.x + area_B * B.x + area_C * C.x + area_D * D.x) / totalArea,
+        (area_A * A.y + area_B * B.y + area_C * C.y + area_D * D.y) / totalArea,
+        (area_A * A.z + area_B * B.z + area_C * C.z + area_D * D.z) / totalArea
+      );
+
+      document.getElementById('asym-hud').innerHTML = `
+        A: (${A.x.toFixed(1)}, ${A.y.toFixed(1)}, ${A.z.toFixed(1)})<br>
+        B: (${B.x.toFixed(1)}, ${B.y.toFixed(1)}, ${B.z.toFixed(1)})<br>
+        C: (${C.x.toFixed(1)}, ${C.y.toFixed(1)}, ${C.z.toFixed(1)})<br>
+        D: (${D.x.toFixed(1)}, ${D.y.toFixed(1)}, ${D.z.toFixed(1)})<br><br>
+        <strong>Werte-Mittelpunkt:</strong><br>
+        X: ${W.x.toFixed(3)}<br>Y: ${W.y.toFixed(3)}<br>Z: ${W.z.toFixed(3)}
+      `;
+    }
+
+    // === KLEINES UR-TETRAEDER RECHTS UNTEN (exakt gleiche Farben wie großes Ur-Tetraeder) ===
+    const smallCanvas = document.getElementById('small-tetra');
+    smallCanvas.width = 180;
+    smallCanvas.height = 180;
+    const smallRenderer = new THREE.WebGLRenderer({ canvas: smallCanvas, antialias: true });
+    smallRenderer.setSize(180, 180);
+    const smallScene = new THREE.Scene();
+    const smallCamera = new THREE.PerspectiveCamera(50, 1, 0.1, 100);
+    smallCamera.position.set(0, 0, 12);
+    const smallAmbient = new THREE.AmbientLight(0xffffff, 0.8);
+    smallScene.add(smallAmbient);
+
+    const P1s = new THREE.Vector3(0.0, 2.5, 0.4);
+    const P2s = new THREE.Vector3(-2.5, -1.0, 0.0);
+    const P3s = new THREE.Vector3(2.5, -1.5, -0.8);
+    const P4s = new THREE.Vector3(0.4, -0.5, 2.8);
+
+    function createSmallTetra() {
+      const points = [P1s, P2s, P3s, P4s];
+      const kantenMuster = {
+        "0-1": 0x0000ff, "0-2": 0x0000ff, "1-2": 0xff0000,
+        "0-3": 0xff0000, "1-3": 0x0000ff, "2-3": 0xff0000
+      };
+
+      const flächen = [[0,1,2], [0,1,3], [0,2,3], [1,2,3]];
+
+      flächen.forEach(f => {
+        const geom = new THREE.BufferGeometry();
+        const verts = new Float32Array([
+          points[f[0]].x, points[f[0]].y, points[f[0]].z,
+          points[f[1]].x, points[f[1]].y, points[f[1]].z,
+          points[f[2]].x, points[f[2]].y, points[f[2]].z
+        ]);
+        geom.setAttribute('position', new THREE.BufferAttribute(verts, 3));
+        geom.computeVertexNormals();
+
+        // Exakt gleiche Mischfarben wie beim großen Ur-Tetraeder
+        const c1 = kantenMuster[f[0] < f[1] ? `${f[0]}-${f[1]}` : `${f[1]}-${f[0]}`];
+        const c2 = kantenMuster[f[0] < f[2] ? `${f[0]}-${f[2]}` : `${f[2]}-${f[0]}`];
+        const c3 = kantenMuster[f[1] < f[2] ? `${f[1]}-${f[2]}` : `${f[2]}-${f[1]}`];
+        let r = 0, b = 0;
+        [c1, c2, c3].forEach(c => {
+          if (c === 0xff0000) r += 85;
+          if (c === 0x0000ff) b += 85;
+        });
+        const mixedHex = (r << 16) | (0x11 << 8) | b;
+
+        const mat = new THREE.MeshPhongMaterial({
+          color: mixedHex, transparent: true, opacity: 0.85, side: THREE.DoubleSide
+        });
+        const mesh = new THREE.Mesh(geom, mat);
+        smallScene.add(mesh);
+      });
+    }
+    createSmallTetra();
+
+    let smallAngle = 0;
+
+    // === DEIN RESTLICHER ORIGINALCODE (initCascade, executeNextCascadeStep usw.) ===
+    // ... (füge hier deinen vollen Originalcode ein, wie oben beschrieben) ...
+
+    function animate() {
+      requestAnimationFrame(animate);
+      const delta = clock.getDelta();
+      rotationAngle += delta * 1.5;
+      smallAngle += delta * 0.8;   // langsame Rotation
+
+      // Kleine Animation
+      smallScene.rotation.y = smallAngle;
+      smallRenderer.render(smallScene, smallCamera);
+
+      if (isBuilding) {
+        timeSinceLastStep += delta;
+        if (timeSinceLastStep >= ELEMENT_STEP_DURATION) {
+          if (animationQueue.length > 0) {
+            executeNextCascadeStep();
+            timeSinceLastStep = 0;
+          } else { isBuilding = false; }
+        }
+      } else {
+        drawYellowResonanceLines();
+        timeSinceBuildEnd += delta;
+        if (timeSinceBuildEnd > resetTimer) initCascade();
+      }
+
+      currentRadius += (targetRadius - currentRadius) * delta * 4.0;
+      camera.position.x = urTetraederMittelpunkt.x + Math.sin(rotationAngle) * currentRadius;
+      camera.position.z = urTetraederMittelpunkt.z + Math.cos(rotationAngle) * currentRadius;
+      camera.position.y = urTetraederMittelpunkt.y + 5.0 + (currentRadius * 0.1);
+      camera.lookAt(urTetraederMittelpunkt);
+
+      renderer.render(scene, camera);
+      drawHUDProjectionLines();
+    }
+
+    window.onload = function() {
+      resizeCanvas2D();
+      initCascade();
+      clock.start();
+      animate();
+    };
+
+    window.addEventListener('resize', () => {
+      camera.aspect = window.innerWidth / window.innerHeight;
+      camera.updateProjectionMatrix();
+      renderer.setSize(window.innerWidth, window.innerHeight);
+    });
+  </script>
+</body>
+</html>
