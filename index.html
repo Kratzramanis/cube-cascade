@@ -2,7 +2,7 @@
 <html lang="de">
 <head>
   <meta charset="UTF-8" />
-  <title>Kubus-Kaskade – RVT v16 – Winkel-Analyse</title>
+  <title>Kubus-Kaskade – RVT v16 – Volumen-Telemetrie</title>
   <style>
     body { margin: 0; overflow: hidden; background: #000; color: #fff; font-family: sans-serif; }
     #info {
@@ -12,29 +12,34 @@
       padding: 12px 16px;
       background: rgba(0,0,0,0.85);
       border-radius: 6px;
-      font-size: 14px;
-      line-height: 1.5;
+      font-size: 13px;
+      line-height: 1.4;
       border: 1px solid #334;
       z-index: 10;
       max-height: 95vh;
       overflow-y: auto;
-      width: 280px;
+      width: 300px;
     }
     .spitzen-wert { color: #00ffff; font-family: monospace; }
     .winkel-wert { color: #ffff00; font-family: monospace; }
+    .volumen-wert { color: #00ff00; font-family: monospace; font-size: 12px; }
+    .gen-titel { color: #ff00ff; font-weight: bold; margin-top: 4px; display: block; }
   </style>
 </head>
 <body>
   <div id="info">
     <strong>Kubus-Kaskade (Generation 1 bis 5)</strong><br/>
     <span id="cycleInfo">Zyklus: 1</span>
-    <hr style="border:0; border-top:1px solid #334; margin:8px 0;"/>
-    <strong>Mittelpunkt Ur-Tetraeder:</strong><br/>
-    <span id="mittelpunktInfo" style="color: #ffff00; font-family: monospace;">Berechne...</span>
-    <hr style="border:0; border-top:1px solid #334; margin:8px 0;"/>
+    <hr style="border:0; border-top:1px solid #334; margin:6px 0;"/>
+    <strong>Volumen Ur-Tetraeder:</strong><br/>
+    <span id="urVolumenInfo" style="color: #00ff00; font-family: monospace;">Berechne...</span>
+    <hr style="border:0; border-top:1px solid #334; margin:6px 0;"/>
+    <strong>Einzel-Volumen der Generationen:</strong>
+    <div id="volumenTelemetrie">Warte auf Berechnung...</div>
+    <hr style="border:0; border-top:1px solid #334; margin:6px 0;"/>
     <strong>Spitzen Gen 5 (Distanz zum MP):</strong><br/>
     <div id="spitzenInfo">Warte auf Generation 5...</div>
-    <hr style="border:0; border-top:1px solid #334; margin:8px 0;"/>
+    <hr style="border:0; border-top:1px solid #334; margin:6px 0;"/>
     <strong>Minimaler Winkel zum Nachbarn:</strong><br/>
     <div id="winkelInfo">Warte auf Zyklusende...</div>
   </div>
@@ -77,8 +82,8 @@
 
     let generationEdgeHistory = [];
     let gen5SpitzenDistanzen = {};
+    let volumenLogDaten = {};
     
-    // Struktur erweitert, um den Edge-Index mit dem Vektor zu korrelieren
     let gen5SpitzenObjekte = []; 
     let yellowLinesCreated = false;
 
@@ -218,6 +223,30 @@
       return new THREE.Vector3().crossVectors(v1, v2).length() * 0.5;
     }
 
+    function loggeTetraederVolumen(gen, zweigIndex, vol) {
+      if (!volumenLogDaten[gen]) volumenLogDaten[gen] = {};
+      volumenLogDaten[gen][zweigIndex] = vol.toFixed(4);
+      aktualisiereVolumenUI();
+    }
+
+    function aktualisiereVolumenUI() {
+      const div = document.getElementById('volumenTelemetrie');
+      if (!div) return;
+      let html = "";
+      
+      for (let gen = 2; gen <= 5; gen++) {
+        if (volumenLogDaten[gen]) {
+          html += `<span class="gen-titel">Generation ${gen}:</span>`;
+          for (let z = 1; z <= 6; z++) {
+            if (volumenLogDaten[gen][z] !== undefined) {
+              html += `${gen}.${z}: <span class="volumen-wert">${volumenLogDaten[gen][z]}</span><br/>`;
+            }
+          }
+        }
+      }
+      div.innerHTML = html;
+    }
+
     function berechneAeußersteSpitze(mesh, edgeIndex) {
       mesh.updateMatrixWorld(true);
       const positionAttribute = mesh.geometry.attributes.position;
@@ -245,22 +274,19 @@
       if (!infoEl) return;
       let html = "";
       for (let idx in gen5SpitzenDistanzen) {
-        html += `Zweig Kante ${idx}: <span class="spitzen-wert">${gen5SpitzenDistanzen[idx]}</span><br/>`;
+        html += `Zweig Kante ${parseInt(idx) + 1}: <span class="spitzen-wert">${gen5SpitzenDistanzen[idx]}</span><br/>`;
       }
       infoEl.innerHTML = html;
     }
 
-    // NEU: Berechnet die Winkel der am nächsten zueinander liegenden Linien
     function berechneUndZeigeWinkel() {
       const winkelEl = document.getElementById('winkelInfo');
       if (!winkelEl || gen5SpitzenObjekte.length < 2) return;
 
       let html = "";
 
-      // Für jedes Objekt (Zweig) den minimalen Winkel zu einem anderen bestimmen
       for (let i = 0; i < gen5SpitzenObjekte.length; i++) {
         const objA = gen5SpitzenObjekte[i];
-        // Richtungsvektor vom Mittelpunkt zur Spitze A
         const dirA = new THREE.Vector3().subVectors(objA.vector, urTetraederMittelpunkt).normalize();
         
         let minWinkel = Infinity;
@@ -271,9 +297,8 @@
           const objB = gen5SpitzenObjekte[j];
           const dirB = new THREE.Vector3().subVectors(objB.vector, urTetraederMittelpunkt).normalize();
           
-          // Skalarprodukt für den Winkel
           let dot = dirA.dot(dirB);
-          dot = Math.max(-1, Math.min(1, dot)); // Numerische Sicherheit
+          dot = Math.max(-1, Math.min(1, dot)); 
           const winkelRad = Math.acos(dot);
           const winkelDeg = winkelRad * (180 / Math.PI);
 
@@ -283,7 +308,7 @@
           }
         }
 
-        html += `Kante ${objA.index} zu Kante ${nachbarIndex}: <span class="winkel-wert">${minWinkel.toFixed(2)}°</span><br/>`;
+        html += `Kante ${objA.index + 1} zu Kante ${nachbarIndex + 1}: <span class="winkel-wert">${minWinkel.toFixed(2)}°</span><br/>`;
       }
 
       winkelEl.innerHTML = html;
@@ -342,7 +367,6 @@
       });
       yellowLinesCreated = true;
       
-      // Berechne die Winkel, sobald die Linien manifestiert sind
       berechneUndZeigeWinkel();
     }
 
@@ -351,6 +375,7 @@
       dynamicMeshes = [];
       animationQueue = [];
       gen5SpitzenDistanzen = {};
+      volumenLogDaten = {};
       
       gen5SpitzenObjekte = [];
       yellowLinesCreated = false;
@@ -359,6 +384,8 @@
       if (infoEl) infoEl.textContent = "Warte auf Generation 5...";
       const winkelEl = document.getElementById('winkelInfo');
       if (winkelEl) winkelEl.textContent = "Warte auf Zyklusende...";
+      const teleEl = document.getElementById('volumenTelemetrie');
+      if (teleEl) teleEl.textContent = "Warte auf Berechnung...";
       
       boundingBox.makeEmpty();
       rotationAngle = 0;
@@ -392,12 +419,10 @@
         (vP1.z + vP2.z + vP3.z + vP4.z) / 4
       );
 
-      const mpEl = document.getElementById('mittelpunktInfo');
-      if (mpEl) {
-        mpEl.textContent = `X: ${urTetraederMittelpunkt.x.toFixed(2)}, Y: ${urTetraederMittelpunkt.y.toFixed(2)}, Z: ${urTetraederMittelpunkt.z.toFixed(2)}`;
-      }
-
       const urVolume = tetraVolume(vP1, vP2, vP3, vP4);
+      const urVolEl = document.getElementById('urVolumenInfo');
+      if (urVolEl) urVolEl.textContent = urVolume.toFixed(4);
+
       const initialMap = createColoredTetra([P1, P2, P3, P4], 0xff0000, 0.5);
 
       const faces = [
@@ -444,6 +469,7 @@
       const step = animationQueue.shift();
       const cD = step.data;
       const idx = step.edgeIndex;
+      const zweigNummer = idx + 1; // 1 bis 6
 
       if (step.type === 'CUBE_GEN1') {
         const cubeData = buildCubeOnEdgeAligned(cD.a, cD.b, cD.normal, cD.color, 0.45, false, idx, false);
@@ -463,22 +489,32 @@
         let sicherheitsZaehler = 0;
 
         const vec45_A = new THREE.Vector3().addVectors(cD.ortho1, cD.ortho2).normalize();
-        const vec45_B = new THREE.Vector3().subVectors(cD.ortho1, cD.ortho2).normalize();
-
         let aktivesLimit = MAX_EDGE_LIMIT;
 
         do {
           let d1 = cD.length * (baseScale + idx * 0.05 + zyklusOffset);
-          // KORREKTUR: Dämpfungsterm (0.80 - idx * 0.03) restlos entfernt für echte Volumen-Invarianz
-          let height = (6 * cD.volume) / (cD.length * d1);
-          
           if (d1 > aktivesLimit) d1 = aktivesLimit;
-          if (height > aktivesLimit) height = aktivesLimit;
-
+          
           const shiftAsym = cD.dir.clone().multiplyScalar(cD.length * (0.04 + idx * 0.02 + zyklusOffset * 0.4));
-
           tetraP3 = cD.outerA.clone().addScaledVector(cD.dir, cD.length / 2).add(shiftAsym).addScaledVector(vec45_A, d1);
-          tetraP4 = cD.outerA.clone().addScaledVector(cD.dir, cD.length / 2).sub(shiftAsym).addScaledVector(vec45_B, height);
+
+          const vBase1 = new THREE.Vector3().subVectors(cD.outerB, cD.outerA);
+          const vBase2 = new THREE.Vector3().subVectors(tetraP3, cD.outerA);
+          
+          const crossNormal = new THREE.Vector3().crossVectors(vBase1, vBase2);
+          const areaDouble = crossNormal.length();
+
+          let exactHeight = 0;
+          if (areaDouble > 0.00001) {
+            exactHeight = (6 * cD.volume) / areaDouble;
+          } else {
+            exactHeight = cD.length;
+          }
+          if (exactHeight > aktivesLimit) exactHeight = aktivesLimit;
+
+          const normalDir = crossNormal.clone().normalize();
+          const footPoint = cD.outerA.clone().addScaledVector(cD.dir, cD.length / 2).sub(shiftAsym);
+          tetraP4 = footPoint.clone().addScaledVector(normalDir, exactHeight);
 
           freieKanten = computeFreeEdgeLengths(cD.outerA, cD.outerB, tetraP3, tetraP4);
           freieKanten = freieKanten.map(len => len > aktivesLimit ? aktivesLimit : len);
@@ -489,6 +525,10 @@
         } while (sicherheitsZaehler < 25);
 
         speichereKaskadenHistorie(genNumber, idx, freieKanten, aktivesLimit);
+
+        // Volumen zur Kontrolle neu berechnen und loggen
+        const berechnetesVol = tetraVolume(tetraP3, tetraP4, cD.outerA, cD.outerB);
+        loggeTetraederVolumen(genNumber, zweigNummer, berechnetesVol);
 
         createColoredTetra([[tetraP3.x, tetraP3.y, tetraP3.z], [tetraP4.x, tetraP4.y, tetraP4.z], [cD.outerA.x, cD.outerA.y, cD.outerA.z], [cD.outerB.x, cD.outerB.y, cD.outerB.z]], cD.color, 0.35 - (idx * 0.02));
         
