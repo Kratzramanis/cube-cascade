@@ -1,0 +1,662 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8" />
+  <title>Kubus-Kaskade – RVT v16 – Right HUD Edition</title>
+  <style>
+    body { margin: 0; overflow: hidden; background: #000; color: #fff; font-family: sans-serif; }
+    #info {
+      position: absolute;
+      top: 10px;
+      left: 10px;
+      padding: 12px 16px;
+      background: rgba(0,0,0,0.85);
+      border-radius: 6px;
+      font-size: 13px;
+      line-height: 1.4;
+      border: 1px solid #334;
+      z-index: 10;
+      max-height: 95vh;
+      overflow-y: auto;
+      width: 280px;
+    }
+    /* Das neue, perfekt geordnete rechte HUD-Panel für die Raumbezeichnungen */
+    #rightHUD {
+      position: absolute;
+      top: 10px;
+      right: 10px;
+      padding: 12px 16px;
+      background: rgba(0,0,0,0.85);
+      border-radius: 6px;
+      font-size: 13px;
+      border: 1px solid #334;
+      z-index: 10;
+      width: 180px;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+    .hud-label-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 4px 8px;
+      background: rgba(0, 255, 0, 0.1);
+      border: 1px solid #00ff00;
+      border-radius: 4px;
+      font-family: monospace;
+      font-weight: bold;
+      color: #00ff00;
+    }
+    .spitzen-wert { color: #00ffff; font-family: monospace; }
+    .winkel-wert { color: #ffff00; font-family: monospace; }
+    .volumen-wert { color: #00ff00; font-family: monospace; font-size: 12px; }
+    .gen-titel { color: #ff00ff; font-weight: bold; margin-top: 4px; display: block; }
+
+    /* Overlay Canvas für die dynamischen Verbindungslinien */
+    #lineCanvas {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100vw;
+      height: 100vh;
+      pointer-events: none;
+      z-index: 5;
+    }
+  </style>
+</head>
+<body>
+  <div id="info">
+    <strong>Kubus-Kaskade (Generation 1 bis 5)</strong><br/>
+    <span id="cycleInfo">Zyklus: 1</span>
+    <hr style="margin: 8px 0; border: none; border-top: 1px solid #334;">
+    <div id="cubeInfo">Würfel: 0/5</div>
+    <div id="tetraInfo">Tetraeder: 0/4</div>
+    <div id="oktaInfo">Oktaeder: 0/6</div>
+    <div id="ikosaInfo">Ikosaeder: 0/20</div>
+    <div id="dodekaInfo">Dodekaeder: 0/12</div>
+    <hr style="margin: 8px 0; border: none; border-top: 1px solid #334;">
+    <div id="status">Status: <span style="color: #00ff00;">Bereit</span></div>
+  </div>
+
+  <!-- Neues rechtes HUD-Panel -->
+  <div id="rightHUD">
+    <div class="hud-label-row">
+      <span>Raum 1:</span>
+      <span class="spitzen-wert" id="raum1Spitze">0</span>
+    </div>
+    <div class="hud-label-row">
+      <span>Raum 2:</span>
+      <span class="spitzen-wert" id="raum2Spitze">0</span>
+    </div>
+    <div class="hud-label-row">
+      <span>Raum 3:</span>
+      <span class="spitzen-wert" id="raum3Spitze">0</span>
+    </div>
+    <div class="hud-label-row">
+      <span>Raum 4:</span>
+      <span class="spitzen-wert" id="raum4Spitze">0</span>
+    </div>
+    <div class="hud-label-row">
+      <span>Raum 5:</span>
+      <span class="spitzen-wert" id="raum5Spitze">0</span>
+    </div>
+    <div class="hud-label-row">
+      <span>Raum 6:</span>
+      <span class="spitzen-wert" id="raum6Spitze">0</span>
+    </div>
+    <div class="hud-label-row">
+      <span>Raum 7:</span>
+      <span class="spitzen-wert" id="raum7Spitze">0</span>
+    </div>
+    <div class="hud-label-row">
+      <span>Raum 8:</span>
+      <span class="spitzen-wert" id="raum8Spitze">0</span>
+    </div>
+    <div class="hud-label-row">
+      <span>Raum 9:</span>
+      <span class="spitzen-wert" id="raum9Spitze">0</span>
+    </div>
+     <div class="hud-label-row">
+      <span>Raum 10:</span>
+      <span class="spitzen-wert" id="raum10Spitze">0</span>
+    </div>
+    <div class="hud-label-row">
+      <span>Raum 11:</span>
+      <span class="spitzen-wert" id="raum11Spitze">0</span>
+    </div>
+    <div class="hud-label-row">
+      <span>Raum 12:</span>
+      <span class="spitzen-wert" id="raum12Spitze">0</span>
+    </div>
+
+    <span class="gen-titel">Winkel:</span>
+    <div class="hud-label-row">
+      <span>Raum 1:</span>
+      <span class="winkel-wert" id="raum1Winkel">0°</span>
+    </div>
+    <div class="hud-label-row">
+      <span>Raum 2:</span>
+      <span class="winkel-wert" id="raum2Winkel">0°</span>
+    </div>
+    <div class="hud-label-row">
+      <span>Raum 3:</span>
+      <span class="winkel-wert" id="raum3Winkel">0°</span>
+    </div>
+    <div class="hud-label-row">
+      <span>Raum 4:</span>
+      <span class="winkel-wert" id="raum4Winkel">0°</span>
+    </div>
+    <div class="hud-label-row">
+      <span>Raum 5:</span>
+      <span class="winkel-wert" id="raum5Winkel">0°</span>
+    </div>
+    <div class="hud-label-row">
+      <span>Raum 6:</span>
+      <span class="winkel-wert" id="raum6Winkel">0°</span>
+    </div>
+    <div class="hud-label-row">
+      <span>Raum 7:</span>
+      <span class="winkel-wert" id="raum7Winkel">0°</span>
+    </div>
+    <div class="hud-label-row">
+      <span>Raum 8:</span>
+      <span class="winkel-wert" id="raum8Winkel">0°</span>
+    </div>
+    <div class="hud-label-row">
+      <span>Raum 9:</span>
+      <span class="winkel-wert" id="raum9Winkel">0°</span>
+    </div>
+    <div class="hud-label-row">
+      <span>Raum 10:</span>
+      <span class="winkel-wert" id="raum10Winkel">0°</span>
+    </div>
+    <div class="hud-label-row">
+      <span>Raum 11:</span>
+      <span class="winkel-wert" id="raum11Winkel">0°</span>
+    </div>
+    <div class="hud-label-row">
+      <span>Raum 12:</span>
+      <span class="winkel-wert" id="raum12Winkel">0°</span>
+    </div>
+
+    <span class="gen-titel">Volumen:</span>
+    <div class="hud-label-row">
+      <span>Raum 1:</span>
+      <span class="volumen-wert" id="raum1Volumen">0</span>
+    </div>
+    <div class="hud-label-row">
+      <span>Raum 2:</span>
+      <span class="volumen-wert" id="raum2Volumen">0</span>
+    </div>
+    <div class="hud-label-row">
+      <span>Raum 3:</span>
+      <span class="volumen-wert" id="raum3Volumen">0</span>
+    </div>
+    <div class="hud-label-row">
+      <span>Raum 4:</span>
+      <span class="volumen-wert" id="raum4Volumen">0</span>
+    </div>
+    <div class="hud-label-row">
+      <span>Raum 12:</span>
+      <span class="volumen-wert" id="raum12Volumen">0</span>
+    </div>
+  </div>
+
+  <!-- Overlay Canvas für die Linien -->
+  <canvas id="lineCanvas"></canvas>
+
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+  <script>
+    // Globale Variablen
+    let scene, camera, renderer, clock;
+    let urTetraederMittelpunkt = new THREE.Vector3(0, 0, 0);
+    let rotationAngle = 0;
+    let currentRadius = 25, targetRadius = 25;
+    let isBuilding = false;
+    let animationQueue = [];
+    let timeSinceLastStep = 0;
+    let timeSinceBuildEnd = 0;
+    const ELEMENT_STEP_DURATION = 0.15;
+    const resetTimer = 5.0;
+
+    // HUD-Elemente
+    const cycleInfo = document.getElementById('cycleInfo');
+    const cubeInfo = document.getElementById('cubeInfo');
+    const tetraInfo = document.getElementById('tetraInfo');
+    const oktaInfo = document.getElementById('oktaInfo');
+    const ikosaInfo = document.getElementById('ikosaInfo');
+    const dodekaInfo = document.getElementById('dodekaInfo');
+    const statusElement = document.getElementById('status');
+
+    // Raum-HUD-Elemente
+    const raumSpitzen = [
+      document.getElementById('raum1Spitze'), document.getElementById('raum2Spitze'), document.getElementById('raum3Spitze'),
+      document.getElementById('raum4Spitze'), document.getElementById('raum5Spitze'), document.getElementById('raum6Spitze'),
+      document.getElementById('raum7Spitze'), document.getElementById('raum8Spitze'), document.getElementById('raum9Spitze'),
+      document.getElementById('raum10Spitze'), document.getElementById('raum11Spitze'), document.getElementById('raum12Spitze')
+    ];
+    const raumWinkel = [
+      document.getElementById('raum1Winkel'), document.getElementById('raum2Winkel'), document.getElementById('raum3Winkel'),
+      document.getElementById('raum4Winkel'), document.getElementById('raum5Winkel'), document.getElementById('raum6Winkel'),
+      document.getElementById('raum7Winkel'), document.getElementById('raum8Winkel'), document.getElementById('raum9Winkel'),
+      document.getElementById('raum10Winkel'), document.getElementById('raum11Winkel'), document.getElementById('raum12Winkel')
+    ];
+    const raumVolumen = [
+      document.getElementById('raum1Volumen'), document.getElementById('raum2Volumen'), document.getElementById('raum3Volumen'),
+      document.getElementById('raum4Volumen'), document.getElementById('raum12Volumen')
+    ];
+
+    // 2D-Canvas für Linien
+    const lineCanvas = document.getElementById('lineCanvas');
+    const ctx2d = lineCanvas.getContext('2d');
+
+    function resizeCanvas2D() {
+      lineCanvas.width = window.innerWidth;
+      lineCanvas.height = window.innerHeight;
+    }
+
+    function initCascade() {
+      // Szene zurücksetzen
+      if (scene) {
+        while(scene.children.length > 0) {
+          scene.remove(scene.children[0]);
+        }
+      } else {
+        scene = new THREE.Scene();
+        scene.background = new THREE.Color(0x000000);
+        camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+        renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        document.body.appendChild(renderer.domElement);
+        clock = new THREE.Clock();
+      }
+
+      // Ur-Tetraeder erstellen
+      const urTetraeder = createTetrahedron(0, 0, 0, 5, 0x00ffff);
+      scene.add(urTetraeder);
+
+      // Mittelpunkt des Ur-Tetraeders berechnen
+      urTetraederMittelpunkt = new THREE.Vector3(0, 0, 0);
+
+      // Kamera-Position zurücksetzen
+      camera.position.set(25, 5, 0);
+      camera.lookAt(urTetraederMittelpunkt);
+
+      // Animations-Queue vorbereiten
+      isBuilding = true;
+      timeSinceLastStep = 0;
+      timeSinceBuildEnd = 0;
+      animationQueue = [];
+
+      // Kaskaden-Animation starten
+      startCascadeAnimation();
+
+      // Status zurücksetzen
+      updateStatus('Bereit');
+      updateCycleInfo(1);
+      updateCubeInfo(0, 5);
+      updateTetraInfo(0, 4);
+      updateOktaInfo(0, 6);
+      updateIkosaInfo(0, 20);
+      updateDodekaInfo(0, 12);
+
+      // Raum-HUD zurücksetzen
+      for (let i = 0; i < raumSpitzen.length; i++) {
+        raumSpitzen[i].textContent = '0';
+        raumWinkel[i].textContent = '0°';
+      }
+      for (let i = 0; i < raumVolumen.length; i++) {
+        raumVolumen[i].textContent = '0';
+      }
+    }
+
+    function createTetrahedron(x, y, z, size, color) {
+      const geometry = new THREE.TetrahedronGeometry(size, 0);
+      const material = new THREE.MeshBasicMaterial({
+        color: color,
+        wireframe: true,
+        transparent: true,
+        opacity: 0.8
+      });
+      const tetrahedron = new THREE.Mesh(geometry, material);
+      tetrahedron.position.set(x, y, z);
+      return tetrahedron;
+    }
+
+    function startCascadeAnimation() {
+      // Generation 1: Ur-Tetraeder (bereits erstellt)
+      animationQueue.push({ type: 'tetrahedron', size: 5, color: 0x00ffff, position: { x: 0, y: 0, z: 0 } });
+
+      // Generation 2: 4 Tetraeder
+      for (let i = 0; i < 4; i++) {
+        animationQueue.push({
+          type: 'tetrahedron',
+          size: 3,
+          color: 0x00ff00,
+          position: {
+            x: (i % 2 === 0 ? -7 : 7),
+            y: (i < 2 ? 5 : -5),
+            z: (i === 0 || i === 3 ? -5 : 5)
+          }
+        });
+      }
+
+      // Generation 3: 4 Oktaeder
+      for (let i = 0; i < 4; i++) {
+        animationQueue.push({
+          type: 'octahedron',
+          size: 2.5,
+          color: 0xff00ff,
+          position: {
+            x: (i % 2 === 0 ? -12 : 12),
+            y: (i < 2 ? 8 : -8),
+            z: (i === 0 || i === 3 ? -8 : 8)
+          }
+        });
+      }
+
+      // Generation 4: 6 Würfel
+      for (let i = 0; i < 6; i++) {
+        animationQueue.push({
+          type: 'box',
+          size: 2,
+          color: 0xffff00,
+          position: {
+            x: (i % 3 === 0 ? -17 : (i % 3 === 1 ? 0 : 17)),
+            y: (i < 3 ? 11 : -11),
+            z: (i === 0 || i === 3 ? -11 : (i === 1 || i === 4 ? 0 : 11))
+          }
+        });
+      }
+
+      // Generation 5: 12 Dodekaeder
+      for (let i = 0; i < 12; i++) {
+        animationQueue.push({
+          type: 'dodecahedron',
+          size: 1.5,
+          color: 0xff8800,
+          position: {
+            x: (i % 4 === 0 ? -22 : (i % 4 === 1 ? -7 : (i % 4 === 2 ? 7 : 22))),
+            y: (i < 4 ? 14 : (i < 8 ? 0 : -14)),
+            z: (i % 3 === 0 ? -14 : (i % 3 === 1 ? 0 : 14))
+          }
+        });
+      }
+    }
+
+    function executeNextCascadeStep() {
+      if (animationQueue.length === 0) return;
+
+      const step = animationQueue.shift();
+      let mesh;
+
+      switch (step.type) {
+        case 'tetrahedron':
+          mesh = createTetrahedron(step.position.x, step.position.y, step.position.z, step.size, step.color);
+          break;
+        case 'octahedron':
+          mesh = createOctahedron(step.position.x, step.position.y, step.position.z, step.size, step.color);
+          break;
+        case 'box':
+          mesh = createBox(step.position.x, step.position.y, step.position.z, step.size, step.color);
+          break;
+        case 'dodecahedron':
+          mesh = createDodecahedron(step.position.x, step.position.y, step.position.z, step.size, step.color);
+          break;
+      }
+
+      scene.add(mesh);
+
+      // Aktualisiere die Infos
+      const totalElements = {
+        tetrahedron: 4,
+        octahedron: 4,
+        box: 6,
+        dodecahedron: 12
+      };
+
+      const currentCounts = {
+        tetrahedron: parseInt(tetraInfo.textContent.split('/')[0]) + 1,
+        octahedron: parseInt(oktaInfo.textContent.split('/')[0]) + 1,
+        box: parseInt(cubeInfo.textContent.split('/')[0]) + 1,
+        dodecahedron: parseInt(dodekaInfo.textContent.split('/')[0]) + 1
+      };
+
+      switch (step.type) {
+        case 'tetrahedron':
+          updateTetraInfo(currentCounts.tetrahedron, totalElements.tetrahedron);
+          break;
+        case 'octahedron':
+          updateOktaInfo(currentCounts.octahedron, totalElements.octahedron);
+          break;
+        case 'box':
+          updateCubeInfo(currentCounts.box, totalElements.box);
+          break;
+        case 'dodecahedron':
+          updateDodekaInfo(currentCounts.dodekahedron, totalElements.dodekahedron);
+          break;
+      }
+
+      // Berechne den Gesamt-Radius der Szene
+      calculateGanzkoerperRadius();
+    }
+
+    function createOctahedron(x, y, z, size, color) {
+      const geometry = new THREE.OctahedronGeometry(size, 0);
+      const material = new THREE.MeshBasicMaterial({
+        color: color,
+        wireframe: true,
+        transparent: true,
+        opacity: 0.8
+      });
+      const octahedron = new THREE.Mesh(geometry, material);
+      octahedron.position.set(x, y, z);
+      return octahedron;
+    }
+
+    function createBox(x, y, z, size, color) {
+      const geometry = new THREE.BoxGeometry(size, size, size);
+      const material = new THREE.MeshBasicMaterial({
+        color: color,
+        wireframe: true,
+        transparent: true,
+        opacity: 0.8
+      });
+      const box = new THREE.Mesh(geometry, material);
+      box.position.set(x, y, z);
+      return box;
+    }
+
+    function createDodecahedron(x, y, z, size, color) {
+      const geometry = new THREE.DodecahedronGeometry(size, 0);
+      const material = new THREE.MeshBasicMaterial({
+        color: color,
+        wireframe: true,
+        transparent: true,
+        opacity: 0.8
+      });
+      const dodecahedron = new THREE.Mesh(geometry, material);
+      dodecahedron.position.set(x, y, z);
+      return dodecahedron;
+    }
+
+    function updateStatus(text) {
+      statusElement.innerHTML = `Status: <span style="color: #00ff00;">${text}</span>`;
+    }
+
+    function updateCycleInfo(cycle) {
+      cycleInfo.textContent = `Zyklus: ${cycle}`;
+    }
+
+    function updateCubeInfo(current, total) {
+      cubeInfo.textContent = `Würfel: ${current}/${total}`;
+    }
+
+    function updateTetraInfo(current, total) {
+      tetraInfo.textContent = `Tetraeder: ${current}/${total}`;
+    }
+
+    function updateOktaInfo(current, total) {
+      oktaInfo.textContent = `Oktaeder: ${current}/${total}`;
+    }
+
+    function updateIkosaInfo(current, total) {
+      ikosaInfo.textContent = `Ikosaeder: ${current}/${total}`;
+    }
+
+    function updateDodekaInfo(current, total) {
+      dodekaInfo.textContent = `Dodekaeder: ${current}/${total}`;
+    }
+
+    function calculateGanzkoerperRadius() {
+      // Berechne den maximalen Abstand aller Objekte zum Ursprung
+      let maxDistance = 0;
+      scene.traverse((obj) => {
+        if (obj.isMesh) {
+          const distance = obj.position.length();
+          if (distance > maxDistance) maxDistance = distance;
+        }
+      });
+      targetRadius = maxDistance * 1.5;
+    }
+
+    // Funktion zum Zeichnen der gelben Resonanzlinien zwischen den Platonischen Körpern
+    function drawYellowResonanceLines() {
+      const meshes = [];
+      scene.traverse((obj) => {
+        if (obj.isMesh) meshes.push(obj);
+      });
+
+      // 2D-Koordinaten der Objekte berechnen
+      const objects2D = meshes.map(mesh => {
+        const vector = mesh.position.clone().project(camera);
+        return {
+          x: (vector.x * 0.5 + 0.5) * window.innerWidth,
+          y: (-(vector.y * 0.5) + 0.5) * window.innerHeight,
+          mesh: mesh
+        };
+      });
+
+      // Linien zeichnen
+      ctx2d.clearRect(0, 0, lineCanvas.width, lineCanvas.height);
+      ctx2d.strokeStyle = 'rgba(255, 255, 0, 0.3)';
+      ctx2d.lineWidth = 1;
+
+      for (let i = 0; i < objects2D.length; i++) {
+        for (let j = i + 1; j < objects2D.length; j++) {
+          const obj1 = objects2D[i];
+          const obj2 = objects2D[j];
+
+          // Nur Linien zwischen verschiedenen Generationen zeichnen
+          const isDifferentGeneration = (
+            (obj1.mesh.geometry.type === 'TetrahedronGeometry' && obj2.mesh.geometry.type !== 'TetrahedronGeometry') ||
+            (obj1.mesh.geometry.type !== 'TetrahedronGeometry' && obj2.mesh.geometry.type === 'TetrahedronGeometry')
+          );
+
+          if (isDifferentGeneration) {
+            ctx2d.beginPath();
+            ctx2d.moveTo(obj1.x, obj1.y);
+            ctx2d.lineTo(obj2.x, obj2.y);
+            ctx2d.stroke();
+          }
+        }
+      }
+    }
+
+    // Funktion zum Zeichnen der HUD-Projektionslinien
+    function drawHUDProjectionLines() {
+      const meshes = [];
+      scene.traverse((obj) => {
+        if (obj.isMesh) meshes.push(obj);
+      });
+
+      // 2D-Koordinaten der Objekte berechnen
+      const objects2D = meshes.map(mesh => {
+        const vector = mesh.position.clone().project(camera);
+        return {
+          x: (vector.x * 0.5 + 0.5) * window.innerWidth,
+          y: (-(vector.y * 0.5) + 0.5) * window.innerHeight,
+          mesh: mesh
+        };
+      });
+
+      // HUD-Positionen
+      const hudPositions = [
+        { x: window.innerWidth - 10, y: 30 },  // Raum 1
+        { x: window.innerWidth - 10, y: 60 },  // Raum 2
+        { x: window.innerWidth - 10, y: 90 },  // Raum 3
+        { x: window.innerWidth - 10, y: 120 }, // Raum 4
+        { x: window.innerWidth - 10, y: 150 }, // Raum 5
+        { x: window.innerWidth - 10, y: 180 }, // Raum 6
+        { x: window.innerWidth - 10, y: 210 }, // Raum 7
+        { x: window.innerWidth - 10, y: 240 }, // Raum 8
+        { x: window.innerWidth - 10, y: 270 }, // Raum 9
+        { x: window.innerWidth - 10, y: 300 }, // Raum 10
+        { x: window.innerWidth - 10, y: 330 }, // Raum 11
+        { x: window.innerWidth - 10, y: 360 }  // Raum 12
+      ];
+
+      // Linien von den Objekten zu den HUD-Positionen zeichnen
+      ctx2d.strokeStyle = 'rgba(0, 255, 0, 0.75)';
+      ctx2d.lineWidth = 1.5;
+      ctx2d.setLineDash([4, 4]); // Stylischer gestrichelter Vektor-Look
+      ctx2d.stroke();
+      ctx2d.setLineDash([]);
+
+      // Kleiner Zielpunkt am Schnittpunkt
+      ctx2d.beginPath();
+      ctx2d.arc(sourceX, sourceY, 3, 0, 2 * Math.PI);
+      ctx2d.fillStyle = '#00ff00';
+      ctx2d.fill();
+    }
+
+    function animate() {
+      requestAnimationFrame(animate);
+      const delta = clock.getDelta();
+      rotationAngle += delta * 1.5;
+
+      if (isBuilding) {
+        timeSinceLastStep += delta;
+        if (timeSinceLastStep >= ELEMENT_STEP_DURATION) {
+          if (animationQueue.length > 0) {
+            executeNextCascadeStep();
+            timeSinceLastStep = 0;
+          } else {
+            isBuilding = false;
+          }
+        }
+      } else {
+        drawYellowResonanceLines();
+        timeSinceBuildEnd += delta;
+        if (timeSinceBuildEnd > resetTimer) initCascade();
+      }
+
+      currentRadius += (targetRadius - currentRadius) * delta * 4.0;
+      camera.position.x = urTetraederMittelpunkt.x + Math.sin(rotationAngle) * currentRadius;
+      camera.position.z = urTetraederMittelpunkt.z + Math.cos(rotationAngle) * currentRadius;
+      camera.position.y = urTetraederMittelpunkt.y + 5.0 + (currentRadius * 0.1);
+      camera.lookAt(urTetraederMittelpunkt);
+
+      renderer.render(scene, camera);
+
+      // Berechne die Linien-Projektion in jedem Frame neu
+      drawHUDProjectionLines();
+    }
+
+    window.onload = function() {
+      resizeCanvas2D();
+      initCascade();
+      clock.start();
+      animate();
+    };
+
+    window.addEventListener('resize', () => {
+      camera.aspect = window.innerWidth / window.innerHeight;
+      camera.updateProjectionMatrix();
+      renderer.setSize(window.innerWidth, window.innerHeight);
+      calculateGanzkoerperRadius();
+    });
+  </script>
+</body>
+</html>
