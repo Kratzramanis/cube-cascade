@@ -2,7 +2,7 @@
 <html lang="de">
 <head>
   <meta charset="UTF-8" />
-  <title>Kubus-Kaskade – RVT v16 – Volumen-Telemetrie</title>
+  <title>Kubus-Kaskade – RVT v16 – 3D Raum-Labels</title>
   <style>
     body { margin: 0; overflow: hidden; background: #000; color: #fff; font-family: sans-serif; }
     #info {
@@ -62,6 +62,7 @@
     scene.add(dirLight);
 
     let dynamicMeshes = [];
+    let labelsArray = []; // Für das Billboard-Update der Text-Sprites
     let animationQueue = [];
     
     let rotationAngle = 0;
@@ -88,6 +89,35 @@
     let yellowLinesCreated = false;
 
     let urTetraederMittelpunkt = new THREE.Vector3();
+
+    // Funktion zur Erstellung eines gestochen scharfen Text-Sprites im 3D-Raum
+    function create3DLabel(text, position) {
+      const canvas = document.createElement('canvas');
+      canvas.width = 128;
+      canvas.height = 64;
+      const ctx = canvas.getContext('2d');
+      ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      ctx.strokeStyle = '#00ff00';
+      ctx.lineWidth = 2;
+      ctx.strokeRect(0, 0, canvas.width, canvas.height);
+      ctx.fillStyle = '#00ff00';
+      ctx.font = 'Bold 20px monospace';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(text, canvas.width / 2, canvas.height / 2);
+
+      const texture = new THREE.CanvasTexture(canvas);
+      const spriteMaterial = new THREE.SpriteMaterial({ map: texture, transparent: true });
+      const sprite = new THREE.Sprite(spriteMaterial);
+      sprite.position.copy(position);
+      // Skalierung des Labels im Raum
+      sprite.scale.set(4.5, 2.25, 1);
+      
+      scene.add(sprite);
+      dynamicMeshes.push(sprite);
+      labelsArray.push(sprite);
+    }
 
     function generateTetraEdgeColors(baseEdgeColor) {
       if (baseEdgeColor === 0xff0000) {
@@ -373,6 +403,7 @@
     function initCascade() {
       dynamicMeshes.forEach(mesh => { scene.remove(mesh); if(mesh.geometry) mesh.geometry.dispose(); if(mesh.material) mesh.material.dispose(); });
       dynamicMeshes = [];
+      labelsArray = [];
       animationQueue = [];
       gen5SpitzenDistanzen = {};
       volumenLogDaten = {};
@@ -425,6 +456,16 @@
 
       const initialMap = createColoredTetra([P1, P2, P3, P4], 0xff0000, 0.5);
 
+      // Label für Ur-Tetraeder setzen
+      create3DLabel("Ur-Tetra", urTetraederMittelpunkt.clone().add(new THREE.Vector3(0, 2, 0)));
+      
+      // Neongrüne Linie für Ur-Tetraeder
+      const neonMat = new THREE.LineBasicMaterial({ color: 0x00ff00, linewidth: 2 });
+      const lineGeom = new THREE.BufferGeometry().setFromPoints([urTetraederMittelpunkt, urTetraederMittelpunkt.clone().add(new THREE.Vector3(0, 2, 0))]);
+      const line = new THREE.Line(lineGeom, neonMat);
+      scene.add(line);
+      dynamicMeshes.push(line);
+
       const faces = [
         { pts: [vP1, vP2, vP3], area: getTriangleArea(vP1, vP2, vP3) },
         { pts: [vP1, vP2, vP4], area: getTriangleArea(vP1, vP2, vP4) },
@@ -469,7 +510,7 @@
       const step = animationQueue.shift();
       const cD = step.data;
       const idx = step.edgeIndex;
-      const zweigNummer = idx + 1; // 1 bis 6
+      const zweigNummer = idx + 1; 
 
       if (step.type === 'CUBE_GEN1') {
         const cubeData = buildCubeOnEdgeAligned(cD.a, cD.b, cD.normal, cD.color, 0.45, false, idx, false);
@@ -526,14 +567,33 @@
 
         speichereKaskadenHistorie(genNumber, idx, freieKanten, aktivesLimit);
 
-        // Volumen zur Kontrolle neu berechnen und loggen
         const berechnetesVol = tetraVolume(tetraP3, tetraP4, cD.outerA, cD.outerB);
         loggeTetraederVolumen(genNumber, zweigNummer, berechnetesVol);
 
         createColoredTetra([[tetraP3.x, tetraP3.y, tetraP3.z], [tetraP4.x, tetraP4.y, tetraP4.z], [cD.outerA.x, cD.outerA.y, cD.outerA.z], [cD.outerB.x, cD.outerB.y, cD.outerB.z]], cD.color, 0.35 - (idx * 0.02));
         
-        let nextCubeColor = (cD.color === 0xff0000) ? 0x0000ff : 0xff0000;
+        // --- NEU: Berechnung des Tetraeder-Mittelpunkts (Schwerpunkt) für das 3D Raum-Label ---
+        const tetraMP = new THREE.Vector3(
+          (tetraP3.x + tetraP4.x + cD.outerA.x + cD.outerB.x) / 4,
+          (tetraP3.y + tetraP4.y + cD.outerA.y + cD.outerB.y) / 4,
+          (tetraP3.z + tetraP4.z + cD.outerA.z + cD.outerB.z) / 4
+        );
+
+        // Vektor nach außen für den Label-Offset berechnen
+        const vonMitte = new THREE.Vector3().subVectors(tetraMP, urTetraederMittelpunkt).normalize();
+        const labelPos = tetraMP.clone().addScaledVector(vonMitte, 3.5); // Verschiebung des Labels nach außen
+
+        // Neon-grüne Verbindungslinie vom Mittelpunkt zum Label ziehen
+        const neonMaterial = new THREE.LineBasicMaterial({ color: 0x00ff00, linewidth: 2 });
+        const labelLineGeom = new THREE.BufferGeometry().setFromPoints([tetraMP, labelPos]);
+        const labelLine = new THREE.Line(labelLineGeom, neonMaterial);
+        scene.add(labelLine);
+        dynamicMeshes.push(labelLine);
+
+        // 3D-Text erzeugen (z.B. "2.1", "3.4")
+        create3DLabel(`${genNumber}.${zweigNummer}`, labelPos);
         
+        let nextCubeColor = (cD.color === 0xff0000) ? 0x0000ff : 0xff0000;
         animationQueue.push({ type: nextGenType, edgeIndex: idx, data: { a: tetraP3, b: tetraP4, volume: cD.volume, normal: vec45_A, color: nextCubeColor } });
 
       } else if (step.type === 'CUBE_GEN2') {
