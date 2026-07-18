@@ -2,27 +2,41 @@
 <html lang="de">
 <head>
   <meta charset="UTF-8" />
-  <title>Kubus-Kaskade – RVT v16</title>
+  <title>Kubus-Kaskade – RVT v16 – Winkel-Analyse</title>
   <style>
     body { margin: 0; overflow: hidden; background: #000; color: #fff; font-family: sans-serif; }
     #info {
       position: absolute;
       top: 10px;
       left: 10px;
-      padding: 8px 12px;
-      background: rgba(0,0,0,0.8);
-      border-radius: 4px;
+      padding: 12px 16px;
+      background: rgba(0,0,0,0.85);
+      border-radius: 6px;
       font-size: 14px;
-      line-height: 1.4;
+      line-height: 1.5;
       border: 1px solid #334;
       z-index: 10;
+      max-height: 95vh;
+      overflow-y: auto;
+      width: 280px;
     }
+    .spitzen-wert { color: #00ffff; font-family: monospace; }
+    .winkel-wert { color: #ffff00; font-family: monospace; }
   </style>
 </head>
 <body>
   <div id="info">
-    <strong>Kubus-Kaskade</strong><br/>
+    <strong>Kubus-Kaskade (Generation 1 bis 5)</strong><br/>
     <span id="cycleInfo">Zyklus: 1</span>
+    <hr style="border:0; border-top:1px solid #334; margin:8px 0;"/>
+    <strong>Mittelpunkt Ur-Tetraeder:</strong><br/>
+    <span id="mittelpunktInfo" style="color: #ffff00; font-family: monospace;">Berechne...</span>
+    <hr style="border:0; border-top:1px solid #334; margin:8px 0;"/>
+    <strong>Spitzen Gen 5 (Distanz zum MP):</strong><br/>
+    <div id="spitzenInfo">Warte auf Generation 5...</div>
+    <hr style="border:0; border-top:1px solid #334; margin:8px 0;"/>
+    <strong>Minimaler Winkel zum Nachbarn:</strong><br/>
+    <div id="winkelInfo">Warte auf Zyklusende...</div>
   </div>
 
   <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
@@ -48,7 +62,6 @@
     let rotationAngle = 0;
     let isBuilding = true;
     
-    // Dynamische Zoom-Parameter
     let currentRadius = 30.0;
     let targetRadius = 30.0;
     const boundingBox = new THREE.Box3();
@@ -56,12 +69,20 @@
     let timeSinceLastStep = 0;
     let timeSinceBuildEnd = 0;
     
-    // Modifiziertes Zeitintervall auf Wunsch des Kapitäns: 150ms
-    const ELEMENT_STEP_DURATION = 0.15; 
-    const resetTimer = 15.0;       
+    const ELEMENT_STEP_DURATION = 0.075; 
+    const resetTimer = 5.0;       
     let cycleCount = 0; 
 
+    const MAX_EDGE_LIMIT = 5.0; 
+
     let generationEdgeHistory = [];
+    let gen5SpitzenDistanzen = {};
+    
+    // Struktur erweitert, um den Edge-Index mit dem Vektor zu korrelieren
+    let gen5SpitzenObjekte = []; 
+    let yellowLinesCreated = false;
+
+    let urTetraederMittelpunkt = new THREE.Vector3();
 
     function generateTetraEdgeColors(baseEdgeColor) {
       if (baseEdgeColor === 0xff0000) {
@@ -88,15 +109,9 @@
       const size = new THREE.Vector3();
       boundingBox.getSize(size);
       const maxDim = Math.max(size.x, size.y, size.z);
-      
-      // Berechnung des optimalen Abstands basierend auf dem Field of View (FOV)
       const fovRad = (camera.fov * Math.PI) / 180;
       let calculatedRadius = maxDim / (2 * Math.tan(fovRad / 2));
-      
-      // Sicherheitsfaktor (1.4), damit die Ecken bei Rotation niemals den Bildschirmrand schneiden
       calculatedRadius *= 1.4;
-      
-      // Mindestabstand festlegen
       targetRadius = Math.max(calculatedRadius, 25.0);
     }
 
@@ -104,13 +119,7 @@
       const p = points.map(pt => new THREE.Vector3(...pt));
       const kantenMuster = generateTetraEdgeColors(baseEdgeColor);
 
-      // Erweitere die Bounding Box um die neuen Punkte des Tetraeders
       updateBoundingBox(points);
-
-      function getLocalKantenFarbe(i1, i2) {
-        const key = i1 < i2 ? `${i1}-${i2}` : `${i2}-${i1}`;
-        return kantenMuster[key];
-      }
 
       const flächenDefinitionen = [
         { Indizes: [0, 1, 2], pts: [p[0], p[1], p[2]] },
@@ -120,9 +129,9 @@
       ];
 
       flächenDefinitionen.forEach(f => {
-        const c1 = getLocalKantenFarbe(f.Indizes[0], f.Indizes[1]);
-        const c2 = getLocalKantenFarbe(f.Indizes[0], f.Indizes[2]);
-        const c3 = getLocalKantenFarbe(f.Indizes[1], f.Indizes[2]);
+        const c1 = kantenMuster[f.Indizes[0] < f.Indizes[1] ? `${f.Indizes[0]}-${f.Indizes[1]}` : `${f.Indizes[1]}-${f.Indizes[0]}`];
+        const c2 = kantenMuster[f.Indizes[0] < f.Indizes[2] ? `${f.Indizes[0]}-${f.Indizes[2]}` : `${f.Indizes[2]}-${f.Indizes[0]}`];
+        const c3 = kantenMuster[f.Indizes[1] < f.Indizes[2] ? `${f.Indizes[1]}-${f.Indizes[2]}` : `${f.Indizes[2]}-${f.Indizes[1]}`];
 
         let r = 0, b = 0;
         [c1, c2, c3].forEach(c => {
@@ -153,7 +162,7 @@
       ];
 
       kantenPaare.forEach(paar => {
-        const col = getLocalKantenFarbe(paar[0], paar[1]);
+        const col = kantenMuster[paar[0] < paar[1] ? `${paar[0]}-${paar[1]}` : `${paar[1]}-${paar[0]}`];
         const lineGeom = new THREE.BufferGeometry().setFromPoints([p[paar[0]], p[paar[1]]]);
         const lineMat = new THREE.LineBasicMaterial({ color: col, linewidth: 2 });
         const line = new THREE.Line(lineGeom, lineMat);
@@ -176,7 +185,7 @@
 
     function isDisjointFromHistory(newLengths, kantenIndex, tolerance = 0.0015) {
       for (let z = 0; z < generationEdgeHistory.length; z++) {
-        const vorherigesSet = generationEdgeHistory[z] && generationEdgeHistory[z][kantenIndex];
+        const vorherigesSet = generationEdgeHistory[z] && generationEdgeHistory[z][kantenIndex]?.laengen;
         if (!vorherigesSet) continue;
         const identisch = newLengths.every((len, i) => Math.abs(len - vorherigesSet[i]) < tolerance);
         if (identisch) return false;
@@ -184,10 +193,16 @@
       return true;
     }
 
-    function speichereGen1Kantenlaengen(kantenIndex, laengen) {
+    function speichereKaskadenHistorie(generation, kantenIndex, laengen, limit) {
       const zyklusSlot = cycleCount - 1;
       if (!generationEdgeHistory[zyklusSlot]) generationEdgeHistory[zyklusSlot] = [];
-      generationEdgeHistory[zyklusSlot][kantenIndex] = laengen;
+      
+      generationEdgeHistory[zyklusSlot].push({
+        generation: generation,
+        kantenIndex: kantenIndex,
+        laengen: laengen.map(l => Number(l.toFixed(4))),
+        limitErfasst: limit
+      });
     }
 
     function tetraVolume(a, b, c, d) {
@@ -203,7 +218,78 @@
       return new THREE.Vector3().crossVectors(v1, v2).length() * 0.5;
     }
 
-    function buildCubeOnEdgeAligned(pA, pB, referenceNormal, colorRGB, opacity = 0.55, invertAngle = false) {
+    function berechneAeußersteSpitze(mesh, edgeIndex) {
+      mesh.updateMatrixWorld(true);
+      const positionAttribute = mesh.geometry.attributes.position;
+      const vertex = new THREE.Vector3();
+      let maxDist = 0;
+      let absoluteSpitzeVec = new THREE.Vector3();
+
+      for (let i = 0; i < positionAttribute.count; i++) {
+        vertex.fromBufferAttribute(positionAttribute, i);
+        mesh.localToWorld(vertex); 
+        const dist = vertex.distanceTo(urTetraederMittelpunkt);
+        if (dist > maxDist) {
+          maxDist = dist;
+          absoluteSpitzeVec.copy(vertex);
+        }
+      }
+
+      gen5SpitzenDistanzen[edgeIndex] = maxDist.toFixed(4);
+      gen5SpitzenObjekte.push({ index: edgeIndex, vector: absoluteSpitzeVec });
+      ausgabeSpitzenDistanzen();
+    }
+
+    function ausgabeSpitzenDistanzen() {
+      const infoEl = document.getElementById('spitzenInfo');
+      if (!infoEl) return;
+      let html = "";
+      for (let idx in gen5SpitzenDistanzen) {
+        html += `Zweig Kante ${idx}: <span class="spitzen-wert">${gen5SpitzenDistanzen[idx]}</span><br/>`;
+      }
+      infoEl.innerHTML = html;
+    }
+
+    // NEU: Berechnet die Winkel der am nächsten zueinander liegenden Linien
+    function berechneUndZeigeWinkel() {
+      const winkelEl = document.getElementById('winkelInfo');
+      if (!winkelEl || gen5SpitzenObjekte.length < 2) return;
+
+      let html = "";
+
+      // Für jedes Objekt (Zweig) den minimalen Winkel zu einem anderen bestimmen
+      for (let i = 0; i < gen5SpitzenObjekte.length; i++) {
+        const objA = gen5SpitzenObjekte[i];
+        // Richtungsvektor vom Mittelpunkt zur Spitze A
+        const dirA = new THREE.Vector3().subVectors(objA.vector, urTetraederMittelpunkt).normalize();
+        
+        let minWinkel = Infinity;
+        let nachbarIndex = -1;
+
+        for (let j = 0; j < gen5SpitzenObjekte.length; j++) {
+          if (i === j) continue;
+          const objB = gen5SpitzenObjekte[j];
+          const dirB = new THREE.Vector3().subVectors(objB.vector, urTetraederMittelpunkt).normalize();
+          
+          // Skalarprodukt für den Winkel
+          let dot = dirA.dot(dirB);
+          dot = Math.max(-1, Math.min(1, dot)); // Numerische Sicherheit
+          const winkelRad = Math.acos(dot);
+          const winkelDeg = winkelRad * (180 / Math.PI);
+
+          if (winkelDeg < minWinkel) {
+            minWinkel = winkelDeg;
+            nachbarIndex = objB.index;
+          }
+        }
+
+        html += `Kante ${objA.index} zu Kante ${nachbarIndex}: <span class="winkel-wert">${minWinkel.toFixed(2)}°</span><br/>`;
+      }
+
+      winkelEl.innerHTML = html;
+    }
+
+    function buildCubeOnEdgeAligned(pA, pB, referenceNormal, colorRGB, opacity = 0.55, invertAngle = false, edgeIndex = -1, isGen5 = false) {
       const edgeVec = new THREE.Vector3().subVectors(pB, pA);
       const length = edgeVec.length();
       const dir = edgeVec.clone().normalize();
@@ -229,11 +315,14 @@
       scene.add(cube);
       dynamicMeshes.push(cube);
 
+      if (isGen5 && edgeIndex !== -1) {
+        berechneAeußersteSpitze(cube, edgeIndex);
+      }
+
       const outerMid = mid.clone().add(shift.clone().multiplyScalar(2));
       const outerA = outerMid.clone().addScaledVector(dir, -length / 2);
       const outerB = outerMid.clone().addScaledVector(dir, length / 2);
 
-      // Auch die Ecken der Würfel in die Bounding Box einbeziehen
       boundingBox.expandByPoint(outerA);
       boundingBox.expandByPoint(outerB);
       calculateGanzkoerperRadius();
@@ -241,10 +330,35 @@
       return { outerA, outerB, length, dir, ortho1: finalNormal, ortho2: finalOrtho2 };
     }
 
+    function drawYellowResonanceLines() {
+      if (yellowLinesCreated) return;
+      const lineMaterial = new THREE.LineBasicMaterial({ color: 0xffff00, linewidth: 3 });
+
+      gen5SpitzenObjekte.forEach(obj => {
+        const lineGeom = new THREE.BufferGeometry().setFromPoints([urTetraederMittelpunkt, obj.vector]);
+        const line = new THREE.Line(lineGeom, lineMaterial);
+        scene.add(line);
+        dynamicMeshes.push(line); 
+      });
+      yellowLinesCreated = true;
+      
+      // Berechne die Winkel, sobald die Linien manifestiert sind
+      berechneUndZeigeWinkel();
+    }
+
     function initCascade() {
       dynamicMeshes.forEach(mesh => { scene.remove(mesh); if(mesh.geometry) mesh.geometry.dispose(); if(mesh.material) mesh.material.dispose(); });
       dynamicMeshes = [];
       animationQueue = [];
+      gen5SpitzenDistanzen = {};
+      
+      gen5SpitzenObjekte = [];
+      yellowLinesCreated = false;
+      
+      const infoEl = document.getElementById('spitzenInfo');
+      if (infoEl) infoEl.textContent = "Warte auf Generation 5...";
+      const winkelEl = document.getElementById('winkelInfo');
+      if (winkelEl) winkelEl.textContent = "Warte auf Zyklusende...";
       
       boundingBox.makeEmpty();
       rotationAngle = 0;
@@ -272,8 +386,18 @@
       const vP3 = new THREE.Vector3(...P3);
       const vP4 = new THREE.Vector3(...P4);
 
+      urTetraederMittelpunkt.set(
+        (vP1.x + vP2.x + vP3.x + vP4.x) / 4,
+        (vP1.y + vP2.y + vP3.y + vP4.y) / 4,
+        (vP1.z + vP2.z + vP3.z + vP4.z) / 4
+      );
+
+      const mpEl = document.getElementById('mittelpunktInfo');
+      if (mpEl) {
+        mpEl.textContent = `X: ${urTetraederMittelpunkt.x.toFixed(2)}, Y: ${urTetraederMittelpunkt.y.toFixed(2)}, Z: ${urTetraederMittelpunkt.z.toFixed(2)}`;
+      }
+
       const urVolume = tetraVolume(vP1, vP2, vP3, vP4);
-      
       const initialMap = createColoredTetra([P1, P2, P3, P4], 0xff0000, 0.5);
 
       const faces = [
@@ -318,130 +442,86 @@
     function executeNextCascadeStep() {
       if (animationQueue.length === 0) return;
       const step = animationQueue.shift();
+      const cD = step.data;
+      const idx = step.edgeIndex;
 
       if (step.type === 'CUBE_GEN1') {
-        const cubeData = buildCubeOnEdgeAligned(step.data.a, step.data.b, step.data.normal, step.data.color, 0.45, false);
-        animationQueue.push({ type: 'TETRA_GEN2', edgeIndex: step.edgeIndex, data: { ...cubeData, volume: step.data.volume, color: step.data.color } });
+        const cubeData = buildCubeOnEdgeAligned(cD.a, cD.b, cD.normal, cD.color, 0.45, false, idx, false);
+        animationQueue.push({ type: 'TETRA_GEN2', edgeIndex: idx, data: { ...cubeData, volume: cD.volume, color: cD.color } });
 
-      } else if (step.type === 'TETRA_GEN2') {
-        const cD = step.data;
-        const idx = step.edgeIndex;
+      } else if (step.type === 'TETRA_GEN2' || step.type === 'TETRA_GEN3' || step.type === 'TETRA_GEN4' || step.type === 'TETRA_GEN5') {
+        let baseScale = 1.10;
+        let nextGenType = 'CUBE_GEN2';
+        let genNumber = 2;
         
-        const vec45_A = new THREE.Vector3().addVectors(cD.ortho1, cD.ortho2).normalize();
-        const vec45_B = new THREE.Vector3().subVectors(cD.ortho1, cD.ortho2).normalize();
+        if (step.type === 'TETRA_GEN3') { baseScale = 1.08; nextGenType = 'CUBE_GEN3'; genNumber = 3; }
+        if (step.type === 'TETRA_GEN4') { baseScale = 1.05; nextGenType = 'CUBE_GEN4'; genNumber = 4; }
+        if (step.type === 'TETRA_GEN5') { baseScale = 1.02; nextGenType = 'CUBE_GEN5'; genNumber = 5; }
 
         let zyklusOffset = (cycleCount - 1) * 0.11;
         let tetraP3, tetraP4, freieKanten;
         let sicherheitsZaehler = 0;
 
+        const vec45_A = new THREE.Vector3().addVectors(cD.ortho1, cD.ortho2).normalize();
+        const vec45_B = new THREE.Vector3().subVectors(cD.ortho1, cD.ortho2).normalize();
+
+        let aktivesLimit = MAX_EDGE_LIMIT;
+
         do {
-          const d1 = cD.length * (1.10 + idx * 0.08 + zyklusOffset);
-          const height = ((6 * cD.volume) / (cD.length * d1)) * (0.75 - idx * 0.04);
-          const shiftAsym = cD.dir.clone().multiplyScalar(cD.length * (0.05 + idx * 0.03 + zyklusOffset * 0.4));
+          let d1 = cD.length * (baseScale + idx * 0.05 + zyklusOffset);
+          let height = ((6 * cD.volume) / (cD.length * d1)) * (0.80 - idx * 0.03);
+          
+          if (d1 > aktivesLimit) d1 = aktivesLimit;
+          if (height > aktivesLimit) height = aktivesLimit;
+
+          const shiftAsym = cD.dir.clone().multiplyScalar(cD.length * (0.04 + idx * 0.02 + zyklusOffset * 0.4));
 
           tetraP3 = cD.outerA.clone().addScaledVector(cD.dir, cD.length / 2).add(shiftAsym).addScaledVector(vec45_A, d1);
           tetraP4 = cD.outerA.clone().addScaledVector(cD.dir, cD.length / 2).sub(shiftAsym).addScaledVector(vec45_B, height);
 
           freieKanten = computeFreeEdgeLengths(cD.outerA, cD.outerB, tetraP3, tetraP4);
+          freieKanten = freieKanten.map(len => len > aktivesLimit ? aktivesLimit : len);
 
           if (isDisjointFromHistory(freieKanten, idx)) break;
           zyklusOffset += 0.05;
           sicherheitsZaehler++;
         } while (sicherheitsZaehler < 25);
 
-        speichereGen1Kantenlaengen(idx, freieKanten);
+        speichereKaskadenHistorie(genNumber, idx, freieKanten, aktivesLimit);
 
-        createColoredTetra([[tetraP3.x, tetraP3.y, tetraP3.z], [tetraP4.x, tetraP4.y, tetraP4.z], [cD.outerA.x, cD.outerA.y, cD.outerA.z], [cD.outerB.x, cD.outerB.y, cD.outerB.z]], cD.color, 0.35);
+        createColoredTetra([[tetraP3.x, tetraP3.y, tetraP3.z], [tetraP4.x, tetraP4.y, tetraP4.z], [cD.outerA.x, cD.outerA.y, cD.outerA.z], [cD.outerB.x, cD.outerB.y, cD.outerB.z]], cD.color, 0.35 - (idx * 0.02));
         
         let nextCubeColor = (cD.color === 0xff0000) ? 0x0000ff : 0xff0000;
-        animationQueue.push({ type: 'CUBE_GEN2', edgeIndex: idx, data: { a: tetraP3, b: tetraP4, volume: cD.volume, normal: vec45_A, color: nextCubeColor } });
+        
+        animationQueue.push({ type: nextGenType, edgeIndex: idx, data: { a: tetraP3, b: tetraP4, volume: cD.volume, normal: vec45_A, color: nextCubeColor } });
 
       } else if (step.type === 'CUBE_GEN2') {
-        const cubeData = buildCubeOnEdgeAligned(step.data.a, step.data.b, step.data.normal, step.data.color, 0.5, true);
-        animationQueue.push({ type: 'TETRA_GEN3', edgeIndex: step.edgeIndex, data: { ...cubeData, volume: step.data.volume, color: step.data.color } });
-
-      } else if (step.type === 'TETRA_GEN3') {
-        const cD = step.data;
-        const idx = step.edgeIndex;
-        
-        const vec45_A = new THREE.Vector3().addVectors(cD.ortho1, cD.ortho2).normalize();
-        const vec45_B = new THREE.Vector3().subVectors(cD.ortho1, cD.ortho2).normalize();
-        
-        const d1 = cD.length * (1.08 + idx * 0.05); 
-        const height = ((6 * cD.volume) / (cD.length * d1)) * (0.80 - idx * 0.03);
-        const shiftAsym = cD.dir.clone().multiplyScalar(cD.length * (0.04 + idx * 0.02));
-
-        const tetraP3 = cD.outerA.clone().addScaledVector(cD.dir, cD.length / 2).add(shiftAsym).addScaledVector(vec45_A, d1);
-        const tetraP4 = cD.outerA.clone().addScaledVector(cD.dir, cD.length / 2).sub(shiftAsym).addScaledVector(vec45_B, height);
-
-        createColoredTetra([[tetraP3.x, tetraP3.y, tetraP3.z], [tetraP4.x, tetraP4.y, tetraP4.z], [cD.outerA.x, cD.outerA.y, cD.outerA.z], [cD.outerB.x, cD.outerB.y, cD.outerB.z]], cD.color, 0.3);
-        
-        let nextCubeColor = (cD.color === 0xff0000) ? 0x0000ff : 0xff0000;
-        animationQueue.push({ type: 'CUBE_GEN3', edgeIndex: idx, data: { a: tetraP3, b: tetraP4, volume: cD.volume, normal: vec45_A, color: nextCubeColor } });
+        const cubeData = buildCubeOnEdgeAligned(cD.a, cD.b, cD.normal, cD.color, 0.5, true, idx, false);
+        animationQueue.push({ type: 'TETRA_GEN3', edgeIndex: idx, data: { ...cubeData, volume: cD.volume, color: cD.color } });
 
       } else if (step.type === 'CUBE_GEN3') {
-        const cubeData = buildCubeOnEdgeAligned(step.data.a, step.data.b, step.data.normal, step.data.color, 0.55, true);
-        animationQueue.push({ type: 'TETRA_GEN4', edgeIndex: step.edgeIndex, data: { ...cubeData, volume: step.data.volume, color: step.data.color } });
-
-      } else if (step.type === 'TETRA_GEN4') {
-        const cD = step.data;
-        const idx = step.edgeIndex;
-        
-        const vec45_A = new THREE.Vector3().addVectors(cD.ortho1, cD.ortho2).normalize();
-        const vec45_B = new THREE.Vector3().subVectors(cD.ortho1, cD.ortho2).normalize();
-        
-        const d1 = cD.length * (1.05 + idx * 0.03);
-        const height = ((6 * cD.volume) / (cD.length * d1)) * (0.85 - idx * 0.02);
-        const shiftAsym = cD.dir.clone().multiplyScalar(cD.length * (0.03 + idx * 0.01));
-
-        const tetraP3 = cD.outerA.clone().addScaledVector(cD.dir, cD.length / 2).add(shiftAsym).addScaledVector(vec45_A, d1);
-        const tetraP4 = cD.outerA.clone().addScaledVector(cD.dir, cD.length / 2).sub(shiftAsym).addScaledVector(vec45_B, height);
-
-        createColoredTetra([[tetraP3.x, tetraP3.y, tetraP3.z], [tetraP4.x, tetraP4.y, tetraP4.z], [cD.outerA.x, cD.outerA.y, cD.outerA.z], [cD.outerB.x, cD.outerB.y, cD.outerB.z]], cD.color, 0.25);
-        
-        let nextCubeColor = (cD.color === 0xff0000) ? 0x0000ff : 0xff0000;
-        animationQueue.push({ type: 'CUBE_GEN4', edgeIndex: idx, data: { a: tetraP3, b: tetraP4, volume: cD.volume, normal: vec45_A, color: nextCubeColor } });
+        const cubeData = buildCubeOnEdgeAligned(cD.a, cD.b, cD.normal, cD.color, 0.55, true, idx, false);
+        animationQueue.push({ type: 'TETRA_GEN4', edgeIndex: idx, data: { ...cubeData, volume: cD.volume, color: cD.color } });
 
       } else if (step.type === 'CUBE_GEN4') {
-        const cubeData = buildCubeOnEdgeAligned(step.data.a, step.data.b, step.data.normal, step.data.color, 0.6, true);
-        animationQueue.push({ type: 'TETRA_GEN5', edgeIndex: step.edgeIndex, data: { ...cubeData, volume: step.data.volume, color: step.data.color } });
-
-      } else if (step.type === 'TETRA_GEN5') {
-        const cD = step.data;
-        const idx = step.edgeIndex;
-        
-        const vec45_A = new THREE.Vector3().addVectors(cD.ortho1, cD.ortho2).normalize();
-        const vec45_B = new THREE.Vector3().subVectors(cD.ortho1, cD.ortho2).normalize();
-        
-        const d1 = cD.length * (1.02 + idx * 0.01);
-        const height = (6 * cD.volume) / (cD.length * d1);
-
-        const tetraP3 = cD.outerA.clone().addScaledVector(cD.dir, cD.length / 2).addScaledVector(vec45_A, d1);
-        const tetraP4 = cD.outerA.clone().addScaledVector(cD.dir, cD.length / 2).addScaledVector(vec45_B, height);
-
-        createColoredTetra([[tetraP3.x, tetraP3.y, tetraP3.z], [tetraP4.x, tetraP4.y, tetraP4.z], [cD.outerA.x, cD.outerA.y, cD.outerA.z], [cD.outerB.x, cD.outerB.y, cD.outerB.z]], cD.color, 0.2);
-        
-        let nextCubeColor = (cD.color === 0xff0000) ? 0x0000ff : 0xff0000;
-        animationQueue.push({ type: 'CUBE_GEN5', edgeIndex: idx, data: { a: tetraP3, b: tetraP4, volume: cD.volume, normal: vec45_A, color: nextCubeColor } });
+        const cubeData = buildCubeOnEdgeAligned(cD.a, cD.b, cD.normal, cD.color, 0.6, true, idx, false);
+        animationQueue.push({ type: 'TETRA_GEN5', edgeIndex: idx, data: { ...cubeData, volume: cD.volume, color: cD.color } });
 
       } else if (step.type === 'CUBE_GEN5') {
-        buildCubeOnEdgeAligned(step.data.a, step.data.b, step.data.normal, step.data.color, 0.65, true);
+        buildCubeOnEdgeAligned(cD.a, cD.b, cD.normal, cD.color, 0.65, true, idx, true);
       }
     }
 
     initCascade();
-
     const clock = new THREE.Clock();
 
     function animate() {
       requestAnimationFrame(animate);
       const delta = clock.getDelta();
-
-      rotationAngle += delta * 0.9; 
+      rotationAngle += delta * 1.5; 
 
       if (isBuilding) {
         timeSinceLastStep += delta;
-
         if (timeSinceLastStep >= ELEMENT_STEP_DURATION) {
           if (animationQueue.length > 0) {
             executeNextCascadeStep();
@@ -451,21 +531,17 @@
           }
         }
       } else {
+        drawYellowResonanceLines();
+        
         timeSinceBuildEnd += delta;
         if (timeSinceBuildEnd > resetTimer) initCascade();
       }
 
-      // Fliessende Interpolation (Lerp) des Kameraradius für seidenweiche Anpassung
       currentRadius += (targetRadius - currentRadius) * delta * 4.0;
-
-      camera.position.x = Math.sin(rotationAngle) * currentRadius;
-      camera.position.z = Math.cos(rotationAngle) * currentRadius;
-      
-      // Höhenanpassung dynamisch an den aktuellen Radius koppeln
-      camera.position.y = 5.0 + (currentRadius * 0.1); 
-      
-      // Fokus bleibt starr auf dem Massenzentrum
-      camera.lookAt(0, 3.0, 0);
+      camera.position.x = urTetraederMittelpunkt.x + Math.sin(rotationAngle) * currentRadius;
+      camera.position.z = urTetraederMittelpunkt.z + Math.cos(rotationAngle) * currentRadius;
+      camera.position.y = urTetraederMittelpunkt.y + 5.0 + (currentRadius * 0.1); 
+      camera.lookAt(urTetraederMittelpunkt); 
 
       renderer.render(scene, camera);
     }
