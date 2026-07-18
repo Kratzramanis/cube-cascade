@@ -2,9 +2,11 @@
 <html lang="de">
 <head>
   <meta charset="UTF-8" />
-  <title>Kubus-Kaskade – RVT v16 – Extended HUD Edition</title>
+  <title>Kubus-Kaskade – RVT v16 – Invertiertes Interface</title>
   <style>
     body { margin: 0; overflow: hidden; background: #000; color: #fff; font-family: sans-serif; }
+    
+    /* Haupt-Infopanel - Jetzt ganz links positioniert */
     #info {
       position: absolute;
       top: 10px;
@@ -18,10 +20,8 @@
       z-index: 10;
       max-height: 95vh;
       overflow-y: auto;
-      width: 280px;
+      width: 300px;
     }
-
-    /* Farbige Hintergrund-Hervorhebung für Bezeichnungen */
     #info strong {
       display: block;
       background: rgba(50, 50, 50, 0.7);
@@ -30,14 +30,50 @@
       margin-bottom: 4px;
       color: #00ffaa;
     }
-
-    /* Farbige Werte */
     #cycleInfo { color: #00ffff; font-family: monospace; }
     #urVolumenInfo { color: #00ff00; font-family: monospace; }
     #volumenTelemetrie { color: #ffff00; font-family: monospace; }
     #spitzenInfo { color: #ff00ff; font-family: monospace; }
     #winkelInfo { color: #ffaa00; font-family: monospace; }
+    
+    /* Kleines Tetraeder - Rechts neben den Hauptwerten */
+    #small-tetra {
+      position: absolute;
+      top: 10px;
+      left: 330px;
+      width: 320px;
+      height: 320px;
+      border: 1px solid #00ffaa;
+      border-radius: 8px 8px 0 0; /* Unten abgerundet aufgehoben für nahtlosen Übergang */
+      background: rgba(0,0,0,0.7);
+      z-index: 15;
+    }
 
+    /* Asymmetrische Werte - Exakt unter dem Vorschaufenster des kleinen Tetraeders */
+    #asym-hud-container {
+      position: absolute;
+      top: 330px; /* 10px Top + 320px Height des Canvas */
+      left: 330px;
+      width: 320px;
+      background: rgba(0, 0, 0, 0.85);
+      border: 1px solid #00ffff;
+      border-top: none; /* Verschmilzt optisch mit dem Canvas darüber */
+      border-radius: 0 0 8px 8px;
+      box-sizing: border-box;
+      padding: 12px;
+      font-size: 12px;
+      line-height: 1.5;
+      z-index: 15;
+    }
+    #asym-hud-container strong {
+      display: block;
+      color: #00ffff;
+      margin-bottom: 6px;
+      border-bottom: 1px dashed rgba(0, 255, 255, 0.3);
+      padding-bottom: 2px;
+    }
+
+    /* Rechtes HUD - Unverändert für die Raum-Metriken */
     #rightHUD {
       position: absolute;
       top: 10px;
@@ -48,7 +84,7 @@
       font-size: 11px;
       border: 1px solid #334;
       z-index: 10;
-      width: 310px;
+      width: 340px;
       display: flex;
       flex-direction: column;
       gap: 12px;
@@ -76,7 +112,7 @@
     .hud-pos { color: #ffaa00; font-size: 10px; }
     .hud-wm { color: #ff0055; font-size: 10px; font-weight: bold; }
     .hud-metrics { color: #00ffff; display: flex; justify-content: space-between; font-size: 9px; }
-
+    
     #lineCanvas {
       position: absolute;
       top: 0;
@@ -89,14 +125,15 @@
   </style>
 </head>
 <body>
+  <!-- Ganz links: Hauptwerte -->
   <div id="info">
-    <strong>Kubus-Kaskade (Generation 1 bis 5)</strong>
+    <strong>Kubus-Kaskade (Gen 1 bis 5) in m³</strong>
     <span id="cycleInfo">Zyklus: 1</span>
     <hr style="border:0; border-top:1px solid #334; margin:6px 0;"/>
     <strong>Volumen Ur-Tetraeder:</strong>
     <span id="urVolumenInfo">Berechne...</span>
     <hr style="border:0; border-top:1px solid #334; margin:6px 0;"/>
-    <strong>Einzel-Volumen der Generationen:</strong>
+    <strong>Einzel-Volumen (m³):</strong>
     <div id="volumenTelemetrie">Warte auf Berechnung...</div>
     <hr style="border:0; border-top:1px solid #334; margin:6px 0;"/>
     <strong>Spitzen Gen 5 (Distanz zum MP):</strong>
@@ -106,18 +143,29 @@
     <div id="winkelInfo">Warte auf Zyklusende...</div>
   </div>
 
+  <!-- Rechts daneben: Großes Vorschaufenster -->
+  <canvas id="small-tetra"></canvas>
+
+  <!-- Direkt unter dem Vorschaufenster: Asymmetrische Werte -->
+  <div id="asym-hud-container">
+    <strong>ASYMMETRISCHES TETRAEDER</strong>
+    <div id="asym-hud"></div>
+  </div>
+
+  <!-- Rechtes HUD -->
   <div id="rightHUD">
     <div style="text-align: center; font-weight: bold; font-size: 11px; color: #888;">RVT ASYMMETRY & MATRIX METRICS</div>
     <div id="hud-labels-container" style="display: flex; flex-direction: column; gap: 6px;"></div>
   </div>
-
+  
   <canvas id="lineCanvas"></canvas>
 
   <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
   <script>
+    const s = 0.23149637;
+
     const scene = new THREE.Scene();
     scene.background = new THREE.Color(0x020205);
-
     const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 8000);
     const renderer = new THREE.WebGLRenderer({ antialias: true });
     renderer.setSize(window.innerWidth, window.innerHeight);
@@ -141,32 +189,29 @@
     let dynamicMeshes = [];
     let trackingPoints = [];
     let animationQueue = [];
-
     let rotationAngle = 0;
     let isBuilding = true;
-
-    let currentRadius = 30.0;
-    let targetRadius = 30.0;
+    let currentRadius = 8.0; 
+    let targetRadius = 8.0;
     const boundingBox = new THREE.Box3();
-
     let timeSinceLastStep = 0;
     let timeSinceBuildEnd = 0;
-
     const ELEMENT_STEP_DURATION = 0.075;
     const resetTimer = 7.0;
     let cycleCount = 0;
-
-    const MAX_EDGE_LIMIT = 5.0;
-
+    const MAX_EDGE_LIMIT = 5.0 * s; 
     let generationEdgeHistory = [];
     let gen5SpitzenDistanzen = {};
     let volumenLogDaten = {};
-
     let gen5SpitzenObjekte = [];
     let yellowLinesCreated = false;
-
     let urTetraederMittelpunkt = new THREE.Vector3();
     const clock = new THREE.Clock();
+
+    const A = new THREE.Vector3(0.0 * s, 5.0 * s, 0.5 * s);
+    const B = new THREE.Vector3(-4.0 * s, -2.0 * s, -1.0 * s);
+    const C = new THREE.Vector3(5.0 * s, -3.0 * s, -2.0 * s);
+    const D = new THREE.Vector3(1.0 * s, -1.0 * s, 6.0 * s);
 
     function getTriangleArea(p1, p2, p3) {
       const v1 = new THREE.Vector3().subVectors(p2, p1);
@@ -174,43 +219,47 @@
       return new THREE.Vector3().crossVectors(v1, v2).length() * 0.5;
     }
 
-    function registerHUDLabel(text, id, position3D, kantenLaenge = 0, WerteMittelpunkt = null) {
-      const container = document.getElementById('hud-labels-container');
-      if (!container) return;
+    function updateAsymHUD() {
+      const area_A = getTriangleArea(B, C, D);
+      const area_B = getTriangleArea(A, C, D);
+      const area_C = getTriangleArea(A, B, D);
+      const area_D = getTriangleArea(A, B, C);
+      const totalArea = area_A + area_B + area_C + area_D;
 
-      const relVec = new THREE.Vector3().subVectors(position3D, urTetraederMittelpunkt);
-      const dist = relVec.length();
+      const W = new THREE.Vector3(
+        (area_A * A.x + area_B * B.x + area_C * C.x + area_D * D.x) / totalArea,
+        (area_A * A.y + area_B * B.y + area_C * C.y + area_D * D.y) / totalArea,
+        (area_A * A.z + area_B * B.z + area_C * C.z + area_D * D.z) / totalArea
+      );
 
-      let theta = 0;
-      let phi = 0;
-
-      if (dist > 0.001) {
-        theta = Math.acos(Math.max(-1, Math.min(1, relVec.y / dist))) * (180 / Math.PI);
-        phi = Math.atan2(relVec.z, relVec.x) * (180 / Math.PI);
-        if (phi < 0) phi += 360;
-      }
-
-      let wmText = "WM: N/A";
-      if (WerteMittelpunkt) {
-        wmText = `WM: X:${WerteMittelpunkt.x.toFixed(2)} Y:${WerteMittelpunkt.y.toFixed(2)} Z:${WerteMittelpunkt.z.toFixed(2)}`;
-      }
-
-      let row = document.getElementById(id);
-      if (!row) {
-        row = document.createElement('div');
-        row.id = id;
-        row.className = 'hud-label-row';
-        row.innerHTML = `
-          <div class="hud-meta"><span>ID: ${text}</span><span>L: ${kantenLaenge.toFixed(2)}</span></div>
-          <div class="hud-pos">MP: X:${position3D.x.toFixed(2)} Y:${position3D.y.toFixed(2)} Z:${position3D.z.toFixed(2)}</div>
-          <div class="hud-wm">${wmText}</div>
-          <div class="hud-metrics"><span>Th: ${theta.toFixed(1)}°</span><span>Ph: ${phi.toFixed(1)}°</span></div>
-        `;
-        container.appendChild(row);
-      }
-
-      trackingPoints.push({ id: id, pos3D: position3D.clone() });
+      document.getElementById('asym-hud').innerHTML = `
+        A: (${A.x.toFixed(3)}, ${A.y.toFixed(3)}, ${A.z.toFixed(3)}) m<br>
+        B: (${B.x.toFixed(3)}, ${B.y.toFixed(3)}, ${B.z.toFixed(3)}) m<br>
+        C: (${C.x.toFixed(3)}, ${C.y.toFixed(3)}, ${C.z.toFixed(3)}) m<br>
+        D: (${D.x.toFixed(3)}, ${D.y.toFixed(3)}, ${D.z.toFixed(3)}) m<br><br>
+        <strong>Werte-Mittelpunkt (WM):</strong><br>
+        X: ${W.x.toFixed(4)} | Y: ${W.y.toFixed(4)} | Z: ${W.z.toFixed(4)}
+      `;
     }
+
+    const smallCanvas = document.getElementById('small-tetra');
+    smallCanvas.width = 320;
+    smallCanvas.height = 320;
+    const smallRenderer = new THREE.WebGLRenderer({ canvas: smallCanvas, antialias: true });
+    smallRenderer.setSize(320, 320);
+    const smallScene = new THREE.Scene();
+    const smallCamera = new THREE.PerspectiveCamera(50, 1, 0.1, 100);
+    smallCamera.position.set(0, 0, 3); 
+    const smallAmbient = new THREE.AmbientLight(0xffffff, 0.85);
+    smallScene.add(smallAmbient);
+    const smallDirLight = new THREE.DirectionalLight(0xffffff, 0.5);
+    smallDirLight.position.set(5, 10, 5);
+    smallScene.add(smallDirLight);
+
+    const P1s = new THREE.Vector3(0.0 * s, 2.5 * s, 0.4 * s);
+    const P2s = new THREE.Vector3(-2.5 * s, -1.0 * s, 0.0 * s);
+    const P3s = new THREE.Vector3(2.5 * s, -1.5 * s, -0.8 * s);
+    const P4s = new THREE.Vector3(0.4 * s, -0.5 * s, 2.8 * s);
 
     function generateTetraEdgeColors(baseEdgeColor) {
       if (baseEdgeColor === 0xff0000) {
@@ -226,6 +275,86 @@
       }
     }
 
+    function createSmallTetra() {
+      const points = [P1s, P2s, P3s, P4s];
+      const kantenMuster = generateTetraEdgeColors(0xff0000);
+      
+      const flächen = [
+        { idx: [0, 1, 2], pts: [P1s, P2s, P3s] },
+        { idx: [0, 1, 3], pts: [P1s, P2s, P4s] },
+        { idx: [0, 2, 3], pts: [P1s, P3s, P4s] },
+        { idx: [1, 2, 3], pts: [P2s, P3s, P4s] }
+      ];
+
+      flächen.forEach(f => {
+        const c1 = kantenMuster[f.idx[0] < f.idx[1] ? `${f.idx[0]}-${f.idx[1]}` : `${f.idx[1]}-${f.idx[0]}`];
+        const c2 = kantenMuster[f.idx[0] < f.idx[2] ? `${f.idx[0]}-${f.idx[2]}` : `${f.idx[2]}-${f.idx[0]}`];
+        const c3 = kantenMuster[f.idx[1] < f.idx[2] ? `${f.idx[1]}-${f.idx[2]}` : `${f.idx[2]}-${f.idx[1]}`];
+        let r = 0, b = 0;
+        [c1, c2, c3].forEach(c => {
+          if (c === 0xff0000) r += 85;
+          if (c === 0x0000ff) b += 85;
+        });
+        const mixedHex = (r << 16) | (0x11 << 8) | b;
+
+        const geom = new THREE.BufferGeometry();
+        const verts = new Float32Array([
+          f.pts[0].x, f.pts[0].y, f.pts[0].z,
+          f.pts[1].x, f.pts[1].y, f.pts[1].z,
+          f.pts[2].x, f.pts[2].y, f.pts[2].z
+        ]);
+        geom.setAttribute('position', new THREE.BufferAttribute(verts, 3));
+        geom.computeVertexNormals();
+        const mat = new THREE.MeshPhongMaterial({ color: mixedHex, transparent: true, opacity: 0.5, side: THREE.DoubleSide });
+        const mesh = new THREE.Mesh(geom, mat);
+        smallScene.add(mesh);
+      });
+
+      const kantenPaare = [[0, 1], [0, 2], [1, 2], [0, 3], [1, 3], [2, 3]];
+      kantenPaare.forEach(paar => {
+        const col = kantenMuster[paar[0] < paar[1] ? `${paar[0]}-${paar[1]}` : `${paar[1]}-${paar[0]}`];
+        const lineGeom = new THREE.BufferGeometry().setFromPoints([points[paar[0]], points[paar[1]]]);
+        const lineMat = new THREE.LineBasicMaterial({ color: col, linewidth: 2 });
+        const line = new THREE.Line(lineGeom, lineMat);
+        smallScene.add(line);
+      });
+    }
+    createSmallTetra();
+
+    let smallAngle = 0;
+
+    function registerHUDLabel(text, id, position3D, kantenLaenge = 0, WerteMittelpunkt = null) {
+      const container = document.getElementById('hud-labels-container');
+      if (!container) return;
+      const relVec = new THREE.Vector3().subVectors(position3D, urTetraederMittelpunkt);
+      const dist = relVec.length();
+      let theta = 0;
+      let phi = 0;
+      if (dist > 0.001) {
+        theta = Math.acos(Math.max(-1, Math.min(1, relVec.y / dist))) * (180 / Math.PI);
+        phi = Math.atan2(relVec.z, relVec.x) * (180 / Math.PI);
+        if (phi < 0) phi += 360;
+      }
+      let wmText = "WM: N/A";
+      if (WerteMittelpunkt) {
+        wmText = `WM: X:${WerteMittelpunkt.x.toFixed(3)} Y:${WerteMittelpunkt.y.toFixed(3)} Z:${WerteMittelpunkt.z.toFixed(3)}`;
+      }
+      let row = document.getElementById(id);
+      if (!row) {
+        row = document.createElement('div');
+        row.id = id;
+        row.className = 'hud-label-row';
+        row.innerHTML = `
+          <div class="hud-meta"><span>ID: ${text}</span><span>L: ${kantenLaenge.toFixed(3)}m</span></div>
+          <div class="hud-pos">MP: X:${position3D.x.toFixed(3)} Y:${position3D.y.toFixed(3)} Z:${position3D.z.toFixed(3)}</div>
+          <div class="hud-wm">${wmText}</div>
+          <div class="hud-metrics"><span>Th: ${theta.toFixed(1)}°</span><span>Ph: ${phi.toFixed(1)}°</span></div>
+        `;
+        container.appendChild(row);
+      }
+      trackingPoints.push({ id: id, pos3D: position3D.clone() });
+    }
+
     function updateBoundingBox(points) {
       points.forEach(pt => { boundingBox.expandByPoint(new THREE.Vector3(...pt)); });
       calculateGanzkoerperRadius();
@@ -238,19 +367,17 @@
       const fovRad = (camera.fov * Math.PI) / 180;
       let calculatedRadius = maxDim / (2 * Math.tan(fovRad / 2));
       calculatedRadius *= 1.4;
-      targetRadius = Math.max(calculatedRadius, 25.0);
+      targetRadius = Math.max(calculatedRadius, 6.0);
     }
 
     function createColoredTetra(points, baseEdgeColor, opacity = 0.45, labelText = null, labelId = null, baseLength = 0) {
       const p = points.map(pt => new THREE.Vector3(...pt));
       const kantenMuster = generateTetraEdgeColors(baseEdgeColor);
       updateBoundingBox(points);
-
       const area_A = getTriangleArea(p[1], p[2], p[3]);
       const area_B = getTriangleArea(p[0], p[2], p[3]);
       const area_C = getTriangleArea(p[0], p[1], p[3]);
       const area_D = getTriangleArea(p[0], p[1], p[2]);
-
       const totalArea = area_A + area_B + area_C + area_D;
       let W = new THREE.Vector3();
       if (totalArea > 0.0001) {
@@ -260,36 +387,30 @@
           (area_A * p[0].z + area_B * p[1].z + area_C * p[2].z + area_D * p[3].z) / totalArea
         );
       }
-
       const tetraMP = new THREE.Vector3(
         (p[0].x + p[1].x + p[2].x + p[3].x) / 4,
         (p[0].y + p[1].y + p[2].y + p[3].y) / 4,
         (p[0].z + p[1].z + p[2].z + p[3].z) / 4
       );
-
       if (labelText && labelId) {
         registerHUDLabel(labelText, labelId, tetraMP, baseLength, W);
       }
-
       const flächenDefinitionen = [
         { Indizes: [0, 1, 2], pts: [p[0], p[1], p[2]] },
         { Indizes: [0, 1, 3], pts: [p[0], p[1], p[3]] },
         { Indizes: [0, 2, 3], pts: [p[0], p[2], p[3]] },
         { Indizes: [1, 2, 3], pts: [p[1], p[2], p[3]] }
       ];
-
       flächenDefinitionen.forEach(f => {
         const c1 = kantenMuster[f.Indizes[0] < f.Indizes[1] ? `${f.Indizes[0]}-${f.Indizes[1]}` : `${f.Indizes[1]}-${f.Indizes[0]}`];
         const c2 = kantenMuster[f.Indizes[0] < f.Indizes[2] ? `${f.Indizes[0]}-${f.Indizes[2]}` : `${f.Indizes[2]}-${f.Indizes[0]}`];
         const c3 = kantenMuster[f.Indizes[1] < f.Indizes[2] ? `${f.Indizes[1]}-${f.Indizes[2]}` : `${f.Indizes[2]}-${f.Indizes[1]}`];
-
         let r = 0, b = 0;
         [c1, c2, c3].forEach(c => {
           if (c === 0xff0000) r += 85;
           if (c === 0x0000ff) b += 85;
         });
         const mixedHex = (r << 16) | (0x11 << 8) | b;
-
         const geom = new THREE.BufferGeometry();
         const vertices = new Float32Array([
           f.pts[0].x, f.pts[0].y, f.pts[0].z,
@@ -298,7 +419,6 @@
         ]);
         geom.setAttribute('position', new THREE.BufferAttribute(vertices, 3));
         geom.computeVertexNormals();
-
         const mat = new THREE.MeshPhongMaterial({
           color: mixedHex, transparent: true, opacity: opacity, side: THREE.DoubleSide, depthWrite: false
         });
@@ -306,7 +426,6 @@
         scene.add(mesh);
         dynamicMeshes.push(mesh);
       });
-
       const kantenPaare = [[0, 1], [0, 2], [1, 2], [0, 3], [1, 3], [2, 3]];
       kantenPaare.forEach(paar => {
         const col = kantenMuster[paar[0] < paar[1] ? `${paar[0]}-${paar[1]}` : `${paar[1]}-${paar[0]}`];
@@ -316,7 +435,6 @@
         scene.add(line);
         dynamicMeshes.push(line);
       });
-
       return kantenMuster;
     }
 
@@ -330,7 +448,7 @@
       ];
     }
 
-    function isDisjointFromHistory(newLengths, kantenIndex, tolerance = 0.0015) {
+    function isDisjointFromHistory(newLengths, kantenIndex, tolerance = 0.0015 * s) {
       for (let z = 0; z < generationEdgeHistory.length; z++) {
         const vorherigesSet = generationEdgeHistory[z] && generationEdgeHistory[z][kantenIndex]?.laengen;
         if (!vorherigesSet) continue;
@@ -357,7 +475,7 @@
 
     function loggeTetraederVolumen(gen, zweigIndex, vol) {
       if (!volumenLogDaten[gen]) volumenLogDaten[gen] = {};
-      volumenLogDaten[gen][zweigIndex] = vol.toFixed(4);
+      volumenLogDaten[gen][zweigIndex] = vol.toFixed(6); 
       aktualisiereVolumenUI();
     }
 
@@ -370,7 +488,7 @@
           html += `<span class="gen-titel">Generation ${gen}:</span><br/>`;
           for (let z = 1; z <= 6; z++) {
             if (volumenLogDaten[gen][z] !== undefined) {
-              html += `${gen}.${z}: <span class="volumen-wert">${volumenLogDaten[gen][z]}</span><br/>`;
+              html += `${gen}.${z}: <span class="volumen-wert">${volumenLogDaten[gen][z]} m³</span><br/>`;
             }
           }
         }
@@ -384,7 +502,6 @@
       const vertex = new THREE.Vector3();
       let maxDist = 0;
       let absoluteSpitzeVec = new THREE.Vector3();
-
       for (let i = 0; i < positionAttribute.count; i++) {
         vertex.fromBufferAttribute(positionAttribute, i);
         mesh.localToWorld(vertex);
@@ -394,7 +511,6 @@
           absoluteSpitzeVec.copy(vertex);
         }
       }
-
       gen5SpitzenDistanzen[edgeIndex] = maxDist.toFixed(4);
       gen5SpitzenObjekte.push({ index: edgeIndex, vector: absoluteSpitzeVec });
       ausgabeSpitzenDistanzen();
@@ -405,7 +521,7 @@
       if (!infoEl) return;
       let html = "";
       for (let idx in gen5SpitzenDistanzen) {
-        html += `Zweig Kante ${parseInt(idx) + 1}: <span class="spitzen-wert">${gen5SpitzenDistanzen[idx]}</span><br/>`;
+        html += `Zweig Kante ${parseInt(idx) + 1}: <span class="spitzen-wert">${gen5SpitzenDistanzen[idx]} m</span><br/>`;
       }
       infoEl.innerHTML = html;
     }
@@ -413,14 +529,12 @@
     function berechneUndZeigeWinkel() {
       const winkelEl = document.getElementById('winkelInfo');
       if (!winkelEl || gen5SpitzenObjekte.length < 2) return;
-
       let html = "";
       for (let i = 0; i < gen5SpitzenObjekte.length; i++) {
         const objA = gen5SpitzenObjekte[i];
         const dirA = new THREE.Vector3().subVectors(objA.vector, urTetraederMittelpunkt).normalize();
         let minWinkel = Infinity;
         let nachbarIndex = -1;
-
         for (let j = 0; j < gen5SpitzenObjekte.length; j++) {
           if (i === j) continue;
           const objB = gen5SpitzenObjekte[j];
@@ -429,7 +543,6 @@
           dot = Math.max(-1, Math.min(1, dot));
           const winkelRad = Math.acos(dot);
           const winkelDeg = winkelRad * (180 / Math.PI);
-
           if (winkelDeg < minWinkel) {
             minWinkel = winkelDeg;
             nachbarIndex = objB.index;
@@ -444,47 +557,36 @@
       const edgeVec = new THREE.Vector3().subVectors(pB, pA);
       const length = edgeVec.length();
       const dir = edgeVec.clone().normalize();
-
       const projNormal = referenceNormal.clone().addScaledVector(dir, -referenceNormal.dot(dir)).normalize();
       const ortho2 = new THREE.Vector3().crossVectors(dir, projNormal).normalize();
-
       const geom = new THREE.BoxGeometry(length, length, length);
       const mat = new THREE.MeshPhongMaterial({ color: colorRGB, transparent: true, opacity: opacity });
       const cube = new THREE.Mesh(geom, mat);
-
       const angle = invertAngle ? -Math.PI / 4 : Math.PI / 4;
       const finalNormal = projNormal.clone().multiplyScalar(Math.cos(angle)).add(ortho2.clone().multiplyScalar(Math.sin(angle))).normalize();
       const finalOrtho2 = new THREE.Vector3().crossVectors(dir, finalNormal).normalize();
-
       const matrix = new THREE.Matrix4().makeBasis(dir, finalNormal, finalOrtho2);
       cube.quaternion.setFromRotationMatrix(matrix);
-
       const mid = new THREE.Vector3().addVectors(pA, pB).multiplyScalar(0.5);
       const shift = finalNormal.clone().multiplyScalar(length / 2).addScaledVector(finalOrtho2, length / 2);
       cube.position.copy(mid).add(shift);
-
       scene.add(cube);
       dynamicMeshes.push(cube);
-
       if (isGen5 && edgeIndex !== -1) {
         berechneAeußersteSpitze(cube, edgeIndex);
       }
-
       const outerMid = mid.clone().add(shift.clone().multiplyScalar(2));
       const outerA = outerMid.clone().addScaledVector(dir, -length / 2);
       const outerB = outerMid.clone().addScaledVector(dir, length / 2);
-
       boundingBox.expandByPoint(outerA);
       boundingBox.expandByPoint(outerB);
       calculateGanzkoerperRadius();
-
       return { outerA, outerB, length, dir, ortho1: finalNormal, ortho2: finalOrtho2 };
     }
 
     function drawYellowResonanceLines() {
       if (yellowLinesCreated) return;
       const lineMaterial = new THREE.LineBasicMaterial({ color: 0xffff00, linewidth: 3 });
-
       gen5SpitzenObjekte.forEach(obj => {
         const lineGeom = new THREE.BufferGeometry().setFromPoints([urTetraederMittelpunkt, obj.vector]);
         const line = new THREE.Line(lineGeom, lineMaterial);
@@ -504,61 +606,52 @@
       volumenLogDaten = {};
       gen5SpitzenObjekte = [];
       yellowLinesCreated = false;
-
       const container = document.getElementById('hud-labels-container');
       if (container) container.innerHTML = "";
-
       const infoEl = document.getElementById('spitzenInfo');
       if (infoEl) infoEl.textContent = "Warte auf Generation 5...";
       const winkelEl = document.getElementById('winkelInfo');
       if (winkelEl) winkelEl.textContent = "Warte auf Zyklusende...";
       const teleEl = document.getElementById('volumenTelemetrie');
       if (teleEl) teleEl.textContent = "Warte auf Berechnung...";
-
       boundingBox.makeEmpty();
       rotationAngle = 0;
       isBuilding = true;
       timeSinceLastStep = 0;
       timeSinceBuildEnd = 0;
-
-      currentRadius = 30.0;
-      targetRadius = 30.0;
+      currentRadius = 8.0;
+      targetRadius = 8.0;
       cycleCount++;
-
       const cycleInfoEl = document.getElementById('cycleInfo');
       if (cycleInfoEl) cycleInfoEl.textContent = `Zyklus: ${cycleCount}`;
-
-      let P1 = [0.0, 2.5, 0.4];
-      let P2 = [-2.5, -1.0, 0.0];
-      let P3 = [2.5, -1.5, -0.8];
-      let P4 = [0.4, -0.5, 2.8];
-
+      
+      let P1 = [0.0 * s, 2.5 * s, 0.4 * s];
+      let P2 = [-2.5 * s, -1.0 * s, 0.0 * s];
+      let P3 = [2.5 * s, -1.5 * s, -0.8 * s];
+      let P4 = [0.4 * s, -0.5 * s, 2.8 * s];
+      
       const vP1 = new THREE.Vector3(...P1);
       const vP2 = new THREE.Vector3(...P2);
       const vP3 = new THREE.Vector3(...P3);
       const vP4 = new THREE.Vector3(...P4);
-
       urTetraederMittelpunkt.set(
         (vP1.x + vP2.x + vP3.x + vP4.x) / 4,
         (vP1.y + vP2.y + vP3.y + vP4.y) / 4,
         (vP1.z + vP2.z + vP3.z + vP4.z) / 4
       );
-
       const urVolume = tetraVolume(vP1, vP2, vP3, vP4);
       const urVolEl = document.getElementById('urVolumenInfo');
-      if (urVolEl) urVolEl.textContent = urVolume.toFixed(4);
-
+      if (urVolEl) urVolEl.textContent = urVolume.toFixed(6) + " m³";
+      
       const baselength = vP1.distanceTo(vP2);
-
       createColoredTetra([P1, P2, P3, P4], 0xff0000, 0.5, "Ur-Tetra", "label-ur", baselength);
-
+      
       const faces = [
         { pts: [vP1, vP2, vP3], area: getTriangleArea(vP1, vP2, vP3) },
         { pts: [vP1, vP2, vP4], area: getTriangleArea(vP1, vP2, vP4) },
         { pts: [vP1, vP3, vP4], area: getTriangleArea(vP1, vP3, vP4) },
         { pts: [vP2, vP3, vP4], area: getTriangleArea(vP2, vP3, vP4) }
       ];
-
       const urEdges = [
         { pts: [vP1, vP2], key: "0-1" },
         { pts: [vP1, vP3], key: "0-2" },
@@ -567,18 +660,15 @@
         { pts: [vP2, vP4], key: "1-3" },
         { pts: [vP3, vP4], key: "2-3" }
       ];
-
       urEdges.forEach((edge, index) => {
         let neighborFaces = faces.filter(f => f.pts.includes(edge.pts[0]) && f.pts.includes(edge.pts[1]));
         let targetFace = neighborFaces[0];
         if (neighborFaces[1] && neighborFaces[1].area < neighborFaces[0].area) {
           targetFace = neighborFaces[1];
         }
-
         const va = new THREE.Vector3().subVectors(targetFace.pts[1], targetFace.pts[0]);
         const vb = new THREE.Vector3().subVectors(targetFace.pts[2], targetFace.pts[0]);
         const normal = new THREE.Vector3().crossVectors(va, vb).normalize();
-
         const kantenFarbe = generateTetraEdgeColors(0xff0000)[edge.key] || 0xff0000;
         animationQueue.push(
           {
@@ -588,8 +678,8 @@
           }
         );
       });
-
       executeNextCascadeStep();
+      updateAsymHUD();
     }
 
     function executeNextCascadeStep() {
@@ -598,60 +688,46 @@
       const cD = step.data;
       const idx = step.edgeIndex;
       const zweigNummer = idx + 1;
-
       if (step.type === 'CUBE_GEN1') {
         const cubeData = buildCubeOnEdgeAligned(cD.a, cD.b, cD.normal, cD.color, 0.45, false, idx, false);
         animationQueue.push({ type: 'TETRA_GEN2', edgeIndex: idx, data: { ...cubeData, volume: cD.volume, color: cD.color } });
-
       } else if (step.type === 'TETRA_GEN2' || step.type === 'TETRA_GEN3' || step.type === 'TETRA_GEN4' || step.type === 'TETRA_GEN5') {
         let baseScale = 1.10;
         let nextGenType = 'CUBE_GEN2';
         let genNumber = 2;
-
         if (step.type === 'TETRA_GEN3') { baseScale = 1.08; nextGenType = 'CUBE_GEN3'; genNumber = 3; }
         if (step.type === 'TETRA_GEN4') { baseScale = 1.05; nextGenType = 'CUBE_GEN4'; genNumber = 4; }
         if (step.type === 'TETRA_GEN5') { baseScale = 1.02; nextGenType = 'CUBE_GEN5'; genNumber = 5; }
-
         let zyklusOffset = (cycleCount - 1) * 0.11;
         let tetraP3, tetraP4, freieKanten;
         let sicherheitsZaehler = 0;
-
         const vec45_A = new THREE.Vector3().addVectors(cD.ortho1, cD.ortho2).normalize();
         let aktivesLimit = MAX_EDGE_LIMIT;
-
         do {
           let d1 = cD.length * (baseScale + idx * 0.05 + zyklusOffset);
           if (d1 > aktivesLimit) d1 = aktivesLimit;
           const shiftAsym = cD.dir.clone().multiplyScalar(cD.length * (0.04 + idx * 0.02 + zyklusOffset * 0.4));
           tetraP3 = cD.outerA.clone().addScaledVector(cD.dir, cD.length / 2).add(shiftAsym).addScaledVector(vec45_A, d1);
-
           const vBase1 = new THREE.Vector3().subVectors(cD.outerB, cD.outerA);
           const vBase2 = new THREE.Vector3().subVectors(tetraP3, cD.outerA);
           const crossNormal = new THREE.Vector3().crossVectors(vBase1, vBase2);
           const areaDouble = crossNormal.length();
-
           let exactHeight = 0;
           if (areaDouble > 0.00001) exactHeight = (6 * cD.volume) / areaDouble;
           else exactHeight = cD.length;
           if (exactHeight > aktivesLimit) exactHeight = aktivesLimit;
-
           const normalDir = crossNormal.clone().normalize();
           const footPoint = cD.outerA.clone().addScaledVector(cD.dir, cD.length / 2).sub(shiftAsym);
           tetraP4 = footPoint.clone().addScaledVector(normalDir, exactHeight);
-
           freieKanten = computeFreeEdgeLengths(cD.outerA, cD.outerB, tetraP3, tetraP4);
           freieKanten = freieKanten.map(len => len > aktivesLimit ? aktivesLimit : len);
-
           if (isDisjointFromHistory(freieKanten, idx)) break;
           zyklusOffset += 0.05;
           sicherheitsZaehler++;
         } while (sicherheitsZaehler < 25);
-
         speichereKaskadenHistorie(genNumber, idx, freieKanten, aktivesLimit);
-
         const berechnetesVol = tetraVolume(tetraP3, tetraP4, cD.outerA, cD.outerB);
         loggeTetraederVolumen(genNumber, zweigNummer, berechnetesVol);
-
         createColoredTetra(
           [[tetraP3.x, tetraP3.y, tetraP3.z], [tetraP4.x, tetraP4.y, tetraP4.z], [cD.outerA.x, cD.outerA.y, cD.outerA.z], [cD.outerB.x, cD.outerB.y, cD.outerB.z]],
           cD.color,
@@ -660,22 +736,17 @@
           `label-${genNumber}-${zweigNummer}`,
           cD.length
         );
-
         let nextCubeColor = (cD.color === 0xff0000) ? 0x0000ff : 0xff0000;
         animationQueue.push({ type: nextGenType, edgeIndex: idx, data: { a: tetraP3, b: tetraP4, volume: cD.volume, normal: vec45_A, color: nextCubeColor } });
-
       } else if (step.type === 'CUBE_GEN2') {
         const cubeData = buildCubeOnEdgeAligned(cD.a, cD.b, cD.normal, cD.color, 0.5, true, idx, false);
         animationQueue.push({ type: 'TETRA_GEN3', edgeIndex: idx, data: { ...cubeData, volume: cD.volume, color: cD.color } });
-
       } else if (step.type === 'CUBE_GEN3') {
         const cubeData = buildCubeOnEdgeAligned(cD.a, cD.b, cD.normal, cD.color, 0.55, true, idx, false);
         animationQueue.push({ type: 'TETRA_GEN4', edgeIndex: idx, data: { ...cubeData, volume: cD.volume, color: cD.color } });
-
       } else if (step.type === 'CUBE_GEN4') {
         const cubeData = buildCubeOnEdgeAligned(cD.a, cD.b, cD.normal, cD.color, 0.6, true, idx, false);
         animationQueue.push({ type: 'TETRA_GEN5', edgeIndex: idx, data: { ...cubeData, volume: cD.volume, color: cD.color } });
-
       } else if (step.type === 'CUBE_GEN5') {
         buildCubeOnEdgeAligned(cD.a, cD.b, cD.normal, cD.color, 0.65, true, idx, true);
       }
@@ -683,19 +754,15 @@
 
     function drawHUDProjectionLines() {
       ctx2d.clearRect(0, 0, canvas2d.width, canvas2d.height);
-
       trackingPoints.forEach(p => {
         const element = document.getElementById(p.id);
         if (!element) return;
-
         const rect = element.getBoundingClientRect();
-        const targetX = rect.left;
+        const targetX = rect.left; 
         const targetY = rect.top + rect.height / 3;
-
         const vec = p.pos3D.clone().project(camera);
         const sourceX = (vec.x * .5 + .5) * canvas2d.width;
         const sourceY = (-(vec.y * .5) + .5) * canvas2d.height;
-
         if (vec.z <= 1) {
           ctx2d.beginPath();
           ctx2d.moveTo(sourceX, sourceY);
@@ -705,7 +772,6 @@
           ctx2d.setLineDash([3, 3]);
           ctx2d.stroke();
           ctx2d.setLineDash([]);
-
           ctx2d.beginPath();
           ctx2d.arc(sourceX, sourceY, 2.5, 0, 2 * Math.PI);
           ctx2d.fillStyle = '#00ffaa';
@@ -718,6 +784,10 @@
       requestAnimationFrame(animate);
       const delta = clock.getDelta();
       rotationAngle += delta * 1.5;
+      smallAngle += delta * 1.2;
+
+      smallScene.rotation.y = smallAngle * 0.8;
+      smallRenderer.render(smallScene, smallCamera);
 
       if (isBuilding) {
         timeSinceLastStep += delta;
@@ -736,7 +806,7 @@
       currentRadius += (targetRadius - currentRadius) * delta * 4.0;
       camera.position.x = urTetraederMittelpunkt.x + Math.sin(rotationAngle) * currentRadius;
       camera.position.z = urTetraederMittelpunkt.z + Math.cos(rotationAngle) * currentRadius;
-      camera.position.y = urTetraederMittelpunkt.y + 5.0 + (currentRadius * 0.1);
+      camera.position.y = urTetraederMittelpunkt.y + 1.5 + (currentRadius * 0.1); 
       camera.lookAt(urTetraederMittelpunkt);
 
       renderer.render(scene, camera);
