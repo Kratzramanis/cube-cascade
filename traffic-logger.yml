@@ -1,0 +1,52 @@
+name: GitHub Traffic Logger
+
+on:
+  schedule:
+    # Läuft jeden Sonntag um 00:00 Uhr (völlig ausreichend für das 14-Tage-Fenster)
+    - cron: '0 0 * * 0'
+  workflow_dispatch: # Erlaubt es dir, den Logger jederzeit manuell zu starten
+
+jobs:
+  log-traffic:
+    runs-allowed: write
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Fetch Clones and Views Data
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+        run: |
+          mkdir -p traffic-data
+          
+          # Clones abrufen
+          curl -s -H "Authorization: token $GH_TOKEN" \
+            -H "Accept: application/vnd.github.v3+json" \
+            https://api.github.com/repos/$REPO/traffic/clones \
+            > traffic-data/clones-latest.json
+            
+          # Unique Views abrufen
+          curl -s -H "Authorization: token $GH_TOKEN" \
+            -H "Accept: application/vnd.github.v3+json" \
+            https://api.github.com/repos/$REPO/traffic/views \
+            > traffic-data/views-latest.json
+
+      - name: Archivieren und Zusammenführen
+        run: |
+          # Hier kann man optionale Skripte laufen lassen, um die JSONs in eine fortlaufende CSV zu mergen.
+          # Für den Anfang speichern wir einfach den Zeitstempel im Dateinamen.
+          TIMESTAMP=$(date +%Y-%m-%d)
+          mv traffic-data/clones-latest.json traffic-data/clones-$TIMESTAMP.json
+          mv traffic-data/views-latest.json traffic-data/views-$TIMESTAMP.json
+
+      - name: Commit & Push der historischen Daten
+        run: |
+          git config --local user.email "action@github.com"
+          git config --local user.name "GitHub Action"
+          git add traffic-data/*
+          git commit -m "System-Protokoll: Traffic-Daten für $TIMESTAMP gesichert" || exit 0
+          git push
