@@ -2,11 +2,11 @@
 <html lang="de">
 <head>
   <meta charset="UTF-8" />
-  <title>Kubus-Kaskade – RVT v16 – Invertiertes Interface</title>
+  <title>Kubus-Kaskade – RVT v16 – Invertiertes Interface mit Scroll-Abstand</title>
   <style>
     body { margin: 0; overflow: hidden; background: #000; color: #fff; font-family: sans-serif; }
     
-    /* Haupt-Infopanel - Jetzt ganz links positioniert */
+    /* Haupt-Infopanel - Ganz links positioniert */
     #info {
       position: absolute;
       top: 10px;
@@ -36,28 +36,28 @@
     #spitzenInfo { color: #ff00ff; font-family: monospace; }
     #winkelInfo { color: #ffaa00; font-family: monospace; }
     
-    /* Kleines Tetraeder - Rechts neben den Hauptwerten */
+    /* Kleines Tetraeder - Nach rechts verschoben wegen der Scrollleiste */
     #small-tetra {
       position: absolute;
       top: 10px;
-      left: 330px;
+      left: 350px; /* Von 330px auf 350px erhöht für genügend Puffer */
       width: 320px;
       height: 320px;
       border: 1px solid #00ffaa;
-      border-radius: 8px 8px 0 0; /* Unten abgerundet aufgehoben für nahtlosen Übergang */
+      border-radius: 8px 8px 0 0;
       background: rgba(0,0,0,0.7);
       z-index: 15;
     }
 
-    /* Asymmetrische Werte - Exakt unter dem Vorschaufenster des kleinen Tetraeders */
+    /* Asymmetrische Werte - Exakt unter dem kleinen Tetraeder mitverschoben */
     #asym-hud-container {
       position: absolute;
-      top: 330px; /* 10px Top + 320px Height des Canvas */
-      left: 330px;
+      top: 330px; 
+      left: 350px; /* Synchron auf 350px angepasst */
       width: 320px;
       background: rgba(0, 0, 0, 0.85);
       border: 1px solid #00ffff;
-      border-top: none; /* Verschmilzt optisch mit dem Canvas darüber */
+      border-top: none;
       border-radius: 0 0 8px 8px;
       box-sizing: border-box;
       padding: 12px;
@@ -73,7 +73,7 @@
       padding-bottom: 2px;
     }
 
-    /* Rechtes HUD - Unverändert für die Raum-Metriken */
+    /* Rechtes HUD */
     #rightHUD {
       position: absolute;
       top: 10px;
@@ -125,7 +125,6 @@
   </style>
 </head>
 <body>
-  <!-- Ganz links: Hauptwerte -->
   <div id="info">
     <strong>Kubus-Kaskade (Gen 1 bis 5) in m³</strong>
     <span id="cycleInfo">Zyklus: 1</span>
@@ -143,16 +142,13 @@
     <div id="winkelInfo">Warte auf Zyklusende...</div>
   </div>
 
-  <!-- Rechts daneben: Großes Vorschaufenster -->
   <canvas id="small-tetra"></canvas>
 
-  <!-- Direkt unter dem Vorschaufenster: Asymmetrische Werte -->
   <div id="asym-hud-container">
     <strong>ASYMMETRISCHES TETRAEDER</strong>
     <div id="asym-hud"></div>
   </div>
 
-  <!-- Rechtes HUD -->
   <div id="rightHUD">
     <div style="text-align: center; font-weight: bold; font-size: 11px; color: #888;">RVT ASYMMETRY & MATRIX METRICS</div>
     <div id="hud-labels-container" style="display: flex; flex-direction: column; gap: 6px;"></div>
