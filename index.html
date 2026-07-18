@@ -469,7 +469,8 @@
 
         do {
           let d1 = cD.length * (baseScale + idx * 0.05 + zyklusOffset);
-          let height = ((6 * cD.volume) / (cD.length * d1)) * (0.80 - idx * 0.03);
+          // KORREKTUR: Dämpfungsterm (0.80 - idx * 0.03) restlos entfernt für echte Volumen-Invarianz
+          let height = (6 * cD.volume) / (cD.length * d1);
           
           if (d1 > aktivesLimit) d1 = aktivesLimit;
           if (height > aktivesLimit) height = aktivesLimit;
