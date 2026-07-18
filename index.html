@@ -2,7 +2,7 @@
 <html lang="de">
 <head>
   <meta charset="UTF-8" />
-  <title>Kubus-Kaskade – RVT v16 – Clean Labels Edition</title>
+  <title>Kubus-Kaskade – RVT v16 – Right HUD Edition</title>
   <style>
     body { margin: 0; overflow: hidden; background: #000; color: #fff; font-family: sans-serif; }
     #info {
@@ -18,12 +18,51 @@
       z-index: 10;
       max-height: 95vh;
       overflow-y: auto;
-      width: 300px;
+      width: 280px;
+    }
+    /* Das neue, perfekt geordnete rechte HUD-Panel für die Raumbezeichnungen */
+    #rightHUD {
+      position: absolute;
+      top: 10px;
+      right: 10px;
+      padding: 12px 16px;
+      background: rgba(0,0,0,0.85);
+      border-radius: 6px;
+      font-size: 13px;
+      border: 1px solid #334;
+      z-index: 10;
+      width: 180px;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+    .hud-label-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 4px 8px;
+      background: rgba(0, 255, 0, 0.1);
+      border: 1px solid #00ff00;
+      border-radius: 4px;
+      font-family: monospace;
+      font-weight: bold;
+      color: #00ff00;
     }
     .spitzen-wert { color: #00ffff; font-family: monospace; }
     .winkel-wert { color: #ffff00; font-family: monospace; }
     .volumen-wert { color: #00ff00; font-family: monospace; font-size: 12px; }
     .gen-titel { color: #ff00ff; font-weight: bold; margin-top: 4px; display: block; }
+    
+    /* Overlay Canvas für die dynamischen Verbindungslinien */
+    #lineCanvas {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100vw;
+      height: 100vh;
+      pointer-events: none;
+      z-index: 5;
+    }
   </style>
 </head>
 <body>
@@ -44,6 +83,15 @@
     <div id="winkelInfo">Warte auf Zyklusende...</div>
   </div>
 
+  <!-- Rechtes HUD Panel für eine saubere Struktur -->
+  <div id="rightHUD">
+    <div style="text-align: center; font-weight: bold; font-size: 11px; color: #888;">RAUM-VEKTOREN</div>
+    <div id="hud-labels-container" style="display: flex; flex-direction: column; gap: 6px;"></div>
+  </div>
+
+  <!-- Canvas für die 2D-Projektionslinien -->
+  <canvas id="lineCanvas"></canvas>
+
   <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
   <script>
     const scene = new THREE.Scene();
@@ -55,6 +103,15 @@
     renderer.setSize(window.innerWidth, window.innerHeight);
     document.body.appendChild(renderer.domElement);
 
+    const canvas2d = document.getElementById('lineCanvas');
+    const ctx2d = canvas2d.getContext('2d');
+
+    function resizeCanvas2D() {
+      canvas2d.width = window.innerWidth;
+      canvas2d.height = window.innerHeight;
+    }
+    window.addEventListener('resize', resizeCanvas2D);
+
     const ambient = new THREE.AmbientLight(0xffffff, 0.75);
     scene.add(ambient);
     const dirLight = new THREE.DirectionalLight(0xffffff, 0.9);
@@ -62,7 +119,7 @@
     scene.add(dirLight);
 
     let dynamicMeshes = [];
-    let labelsArray = []; 
+    let trackingPoints = []; // Speichert die 3D-Schwerpunkte für das rechte HUD
     let animationQueue = [];
     
     let rotationAngle = 0;
@@ -91,31 +148,20 @@
     let urTetraederMittelpunkt = new THREE.Vector3();
     const clock = new THREE.Clock();
 
-    function create3DLabel(text, position) {
-      const canvas = document.createElement('canvas');
-      canvas.width = 128;
-      canvas.height = 64;
-      const ctx = canvas.getContext('2d');
-      ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
-      ctx.fillRect(0, 0, canvas.width, canvas.height);
-      ctx.strokeStyle = '#00ff00';
-      ctx.lineWidth = 2;
-      ctx.strokeRect(0, 0, canvas.width, canvas.height);
-      ctx.fillStyle = '#00ff00';
-      ctx.font = 'Bold 20px monospace';
-      ctx.textAlign = 'center';
-      ctx.textBaseline = 'middle';
-      ctx.fillText(text, canvas.width / 2, canvas.height / 2);
-
-      const texture = new THREE.CanvasTexture(canvas);
-      const spriteMaterial = new THREE.SpriteMaterial({ map: texture, transparent: true });
-      const sprite = new THREE.Sprite(spriteMaterial);
-      sprite.position.copy(position);
-      sprite.scale.set(4.5, 2.25, 1);
+    function registerHUDLabel(text, id, position3D) {
+      const container = document.getElementById('hud-labels-container');
+      if (!container) return;
       
-      scene.add(sprite);
-      dynamicMeshes.push(sprite);
-      labelsArray.push(sprite);
+      let row = document.getElementById(id);
+      if (!row) {
+        row = document.createElement('div');
+        row.id = id;
+        row.className = 'hud-label-row';
+        row.innerHTML = `<span>ID:</span><span>${text}</span>`;
+        container.appendChild(row);
+      }
+      
+      trackingPoints.push({ id: id, pos3D: position3D.clone() });
     }
 
     function generateTetraEdgeColors(baseEdgeColor) {
@@ -260,12 +306,8 @@
 
     function aktualisiereVolumenUI() {
       const div = document.getElementById('volumenTelemetrie');
-      if (!div) {
-        setTimeout(aktualisiereVolumenUI, 50);
-        return;
-      }
+      if (!div) return;
       let html = "";
-      
       for (let gen = 2; gen <= 5; gen++) {
         if (volumenLogDaten[gen]) {
           html += `<span class="gen-titel">Generation ${gen}:</span>`;
@@ -319,7 +361,6 @@
       for (let i = 0; i < gen5SpitzenObjekte.length; i++) {
         const objA = gen5SpitzenObjekte[i];
         const dirA = new THREE.Vector3().subVectors(objA.vector, urTetraederMittelpunkt).normalize();
-        
         let minWinkel = Infinity;
         let nachbarIndex = -1;
 
@@ -327,7 +368,6 @@
           if (i === j) continue;
           const objB = gen5SpitzenObjekte[j];
           const dirB = new THREE.Vector3().subVectors(objB.vector, urTetraederMittelpunkt).normalize();
-          
           let dot = dirA.dot(dirB);
           dot = Math.max(-1, Math.min(1, dot)); 
           const winkelRad = Math.acos(dot);
@@ -401,13 +441,16 @@
     function initCascade() {
       dynamicMeshes.forEach(mesh => { scene.remove(mesh); if(mesh.geometry) mesh.geometry.dispose(); if(mesh.material) mesh.material.dispose(); });
       dynamicMeshes = [];
-      labelsArray = [];
+      trackingPoints = [];
       animationQueue = [];
       gen5SpitzenDistanzen = {};
       volumenLogDaten = {};
       gen5SpitzenObjekte = [];
       yellowLinesCreated = false;
       
+      const container = document.getElementById('hud-labels-container');
+      if (container) container.innerHTML = "";
+
       const infoEl = document.getElementById('spitzenInfo');
       if (infoEl) infoEl.textContent = "Warte auf Generation 5...";
       const winkelEl = document.getElementById('winkelInfo');
@@ -448,16 +491,9 @@
       const urVolEl = document.getElementById('urVolumenInfo');
       if (urVolEl) urVolEl.textContent = urVolume.toFixed(4);
 
-      const initialMap = createColoredTetra([P1, P2, P3, P4], 0xff0000, 0.5);
+      createColoredTetra([P1, P2, P3, P4], 0xff0000, 0.5);
 
-      // Ur-Tetraeder Label mit sicherem Versatz nach oben
-      create3DLabel("Ur-Tetra", urTetraederMittelpunkt.clone().add(new THREE.Vector3(0, 5.0, 0)));
-      
-      const neonMat = new THREE.LineBasicMaterial({ color: 0x00ff00, linewidth: 2 });
-      const lineGeom = new THREE.BufferGeometry().setFromPoints([urTetraederMittelpunkt, urTetraederMittelpunkt.clone().add(new THREE.Vector3(0, 5.0, 0))]);
-      const line = new THREE.Line(lineGeom, neonMat);
-      scene.add(line);
-      dynamicMeshes.push(line);
+      registerHUDLabel("Ur-Tetra", "label-ur", urTetraederMittelpunkt);
 
       const faces = [
         { pts: [vP1, vP2, vP3], area: getTriangleArea(vP1, vP2, vP3) },
@@ -486,7 +522,7 @@
         const vb = new THREE.Vector3().subVectors(targetFace.pts[2], targetFace.pts[0]);
         const normal = new THREE.Vector3().crossVectors(va, vb).normalize();
         
-        const kantenFarbe = initialMap[edge.key];
+        const kantenFarbe = initialMap = generateTetraEdgeColors(0xff0000)[edge.key] || 0xff0000;
         animationQueue.push({ 
           type: 'CUBE_GEN1', 
           edgeIndex: index, 
@@ -527,22 +563,17 @@
         do {
           let d1 = cD.length * (baseScale + idx * 0.05 + zyklusOffset);
           if (d1 > aktivesLimit) d1 = aktivesLimit;
-          
           const shiftAsym = cD.dir.clone().multiplyScalar(cD.length * (0.04 + idx * 0.02 + zyklusOffset * 0.4));
           tetraP3 = cD.outerA.clone().addScaledVector(cD.dir, cD.length / 2).add(shiftAsym).addScaledVector(vec45_A, d1);
 
           const vBase1 = new THREE.Vector3().subVectors(cD.outerB, cD.outerA);
           const vBase2 = new THREE.Vector3().subVectors(tetraP3, cD.outerA);
-          
           const crossNormal = new THREE.Vector3().crossVectors(vBase1, vBase2);
           const areaDouble = crossNormal.length();
 
           let exactHeight = 0;
-          if (areaDouble > 0.00001) {
-            exactHeight = (6 * cD.volume) / areaDouble;
-          } else {
-            exactHeight = cD.length;
-          }
+          if (areaDouble > 0.00001) exactHeight = (6 * cD.volume) / areaDouble;
+          else exactHeight = cD.length;
           if (exactHeight > aktivesLimit) exactHeight = aktivesLimit;
 
           const normalDir = crossNormal.clone().normalize();
@@ -564,26 +595,14 @@
 
         createColoredTetra([[tetraP3.x, tetraP3.y, tetraP3.z], [tetraP4.x, tetraP4.y, tetraP4.z], [cD.outerA.x, cD.outerA.y, cD.outerA.z], [cD.outerB.x, cD.outerB.y, cD.outerB.z]], cD.color, 0.35 - (idx * 0.02));
         
-        // Berechnung des Tetraeder-Schwerpunkts
         const tetraMP = new THREE.Vector3(
           (tetraP3.x + tetraP4.x + cD.outerA.x + cD.outerB.x) / 4,
           (tetraP3.y + tetraP4.y + cD.outerA.y + cD.outerB.y) / 4,
           (tetraP3.z + tetraP4.z + cD.outerA.z + cD.outerB.z) / 4
         );
 
-        // REKALIBRIERUNG: Von 3.5 auf 7.5 erhöht für maximalen, kollisionsfreien Abstand nach außen!
-        const vonMitte = new THREE.Vector3().subVectors(tetraMP, urTetraederMittelpunkt).normalize();
-        const labelPos = tetraMP.clone().addScaledVector(vonMitte, 7.5); 
-
-        // Verlängerte neongrüne Verbindungslinie zeichnen
-        const neonMaterial = new THREE.LineBasicMaterial({ color: 0x00ff00, linewidth: 2 });
-        const labelLineGeom = new THREE.BufferGeometry().setFromPoints([tetraMP, labelPos]);
-        const labelLine = new THREE.Line(labelLineGeom, neonMaterial);
-        scene.add(labelLine);
-        dynamicMeshes.push(labelLine);
-
-        // Erzeugung des verschobenen 3D-Labels
-        create3DLabel(`${genNumber}.${zweigNummer}`, labelPos);
+        // Registriere den 3D Schwerpunkt für das einheitliche rechte Panel
+        registerHUDLabel(`${genNumber}.${zweigNummer}`, `label-${genNumber}-${zweigNummer}`, tetraMP);
         
         let nextCubeColor = (cD.color === 0xff0000) ? 0x0000ff : 0xff0000;
         animationQueue.push({ type: nextGenType, edgeIndex: idx, data: { a: tetraP3, b: tetraP4, volume: cD.volume, normal: vec45_A, color: nextCubeColor } });
@@ -603,6 +622,46 @@
       } else if (step.type === 'CUBE_GEN5') {
         buildCubeOnEdgeAligned(cD.a, cD.b, cD.normal, cD.color, 0.65, true, idx, true);
       }
+    }
+
+    // Zeichnet die dynamischen 2D-Verbindungslinien vom 3D-Raum zum rechten HTML-HUD
+    function drawHUDProjectionLines() {
+      ctx2d.clearRect(0, 0, canvas2d.width, canvas2d.height);
+      
+      trackingPoints.forEach(p => {
+        const element = document.getElementById(p.id);
+        if (!element) return;
+        
+        // Hole die exakte 2D-Position des HTML-Labels auf der rechten Seite
+        const rect = element.getBoundingClientRect();
+        const targetX = rect.left; 
+        const targetY = rect.top + rect.height / 2;
+
+        // Projiziere den 3D-Mittelpunkt des Tetraeders auf den 2D-Bildschirm
+        const vec = p.pos3D.clone().project(camera);
+        
+        // Konvertiere WebGL-Koordinaten (-1 bis +1) in Pixelkoordinaten
+        const sourceX = (vec.x * .5 + .5) * canvas2d.width;
+        const sourceY = (-(vec.y * .5) + .5) * canvas2d.height;
+
+        // Zeichne die saubere, neongrüne Verbindungslinie
+        if (vec.z <= 1) { // Nur zeichnen, wenn das Objekt vor der Kamera liegt
+          ctx2d.beginPath();
+          ctx2d.moveTo(sourceX, sourceY);
+          ctx2d.lineTo(targetX, targetY);
+          ctx2d.strokeStyle = 'rgba(0, 255, 0, 0.75)';
+          ctx2d.lineWidth = 1.5;
+          ctx2d.setLineDash([4, 4]); // Stylischer gestrichelter Vektor-Look
+          ctx2d.stroke();
+          ctx2d.setLineDash([]);
+          
+          // Kleiner Zielpunkt am Schnittpunkt
+          ctx2d.beginPath();
+          ctx2d.arc(sourceX, sourceY, 3, 0, 2 * Math.PI);
+          ctx2d.fillStyle = '#00ff00';
+          ctx2d.fill();
+        }
+      });
     }
 
     function animate() {
@@ -633,9 +692,13 @@
       camera.lookAt(urTetraederMittelpunkt); 
 
       renderer.render(scene, camera);
+      
+      // Berechne die Linien-Projektion in jedem Frame neu
+      drawHUDProjectionLines();
     }
 
     window.onload = function() {
+      resizeCanvas2D();
       initCascade();
       clock.start();
       animate();
