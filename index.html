@@ -73,6 +73,15 @@
       padding-bottom: 2px;
     }
 
+    /* Berechnungsbeispiel für den Werte-Mittelpunkt */
+    #wm-calculation {
+      margin-top: 10px;
+      font-size: 11px;
+      color: #00ffaa;
+      font-family: monospace;
+      white-space: pre-wrap;
+    }
+
     /* Rechtes HUD */
     #rightHUD {
       position: absolute;
@@ -147,6 +156,21 @@
   <div id="asym-hud-container">
     <strong>ASYMMETRISCHES TETRAEDER</strong>
     <div id="asym-hud"></div>
+    <div id="wm-calculation">
+      <strong>Berechnungsbeispiel für den Werte-Mittelpunkt (WM):</strong>
+      <br>
+      W = ( (Fläche_BCD * A) + (Fläche_ACD * B) + (Fläche_ABD * C) + (Fläche_ABC * D) ) / (Fläche_BCD + Fläche_ACD + Fläche_ABD + Fläche_ABC)
+      <br><br>
+      wobei:
+      <br>
+      Fläche_BCD = 0.5 * |(B - C) × (B - D)|
+      <br>
+      Fläche_ACD = 0.5 * |(A - C) × (A - D)|
+      <br>
+      Fläche_ABD = 0.5 * |(A - B) × (A - D)|
+      <br>
+      Fläche_ABC = 0.5 * |(A - B) × (A - C)|
+    </div>
   </div>
 
   <div id="rightHUD">
@@ -279,13 +303,34 @@
       scene.add(new THREE.Line(geom, mat));
     }
 
-    // Funktion zum Zeichnen einer Kugel
-    function drawSmallSphere(position, colorHex, radius, scene) {
+    // Funktion zum Zeichnen einer Kugel mit Beschriftung
+    function drawSmallSphereWithLabel(position, colorHex, radius, scene, label) {
       const geom = new THREE.SphereGeometry(radius, 16, 16);
       const mat = new THREE.MeshPhongMaterial({ color: colorHex, emissive: colorHex, emissiveIntensity: 0.5 });
       const mesh = new THREE.Mesh(geom, mat);
       mesh.position.copy(position);
       scene.add(mesh);
+
+      // Beschriftung hinzufügen
+      const canvas = document.createElement('canvas');
+      canvas.width = 64;
+      canvas.height = 64;
+      const context = canvas.getContext('2d');
+      context.fillStyle = 'rgba(0, 0, 0, 0.7)';
+      context.fillRect(0, 0, 64, 64);
+      context.font = 'Bold 12px Arial';
+      context.fillStyle = '#ffffff';
+      context.textAlign = 'center';
+      context.textBaseline = 'middle';
+      context.fillText(label, 32, 32);
+
+      const texture = new THREE.CanvasTexture(canvas);
+      const spriteMaterial = new THREE.SpriteMaterial({ map: texture });
+      const sprite = new THREE.Sprite(spriteMaterial);
+      sprite.position.copy(position);
+      sprite.position.y += radius + 0.2;
+      sprite.scale.set(0.5, 0.5, 1);
+      scene.add(sprite);
     }
 
     // Funktion zum Zeichnen des kleinen Tetraeders mit Werte-Mittelpunkt, Flächen und Kanten
@@ -357,20 +402,20 @@
       drawSmallEdge(P3s, S_ABD_small, 0x00ff77, smallScene);
       drawSmallEdge(P4s, S_ABC_small, 0x00ff77, smallScene);
 
-      // Punkte des kleinen Tetraeders visualisieren
-      drawSmallSphere(P1s, 0xffffff, 0.15, smallScene);
-      drawSmallSphere(P2s, 0xffffff, 0.15, smallScene);
-      drawSmallSphere(P3s, 0xffffff, 0.15, smallScene);
-      drawSmallSphere(P4s, 0xffffff, 0.15, smallScene);
+      // Punkte des kleinen Tetraeders visualisieren (kleinere Kugeln)
+      drawSmallSphereWithLabel(P1s, 0xffffff, 0.08, smallScene, 'A');
+      drawSmallSphereWithLabel(P2s, 0xffffff, 0.08, smallScene, 'B');
+      drawSmallSphereWithLabel(P3s, 0xffffff, 0.08, smallScene, 'C');
+      drawSmallSphereWithLabel(P4s, 0xffffff, 0.08, smallScene, 'D');
 
-      // Flächenschwerpunkte (Grün)
-      drawSmallSphere(S_BCD_small, 0x00ff77, 0.1, smallScene);
-      drawSmallSphere(S_ACD_small, 0x00ff77, 0.1, smallScene);
-      drawSmallSphere(S_ABD_small, 0x00ff77, 0.1, smallScene);
-      drawSmallSphere(S_ABC_small, 0x00ff77, 0.1, smallScene);
+      // Flächenschwerpunkte (Grün, kleiner)
+      drawSmallSphereWithLabel(S_BCD_small, 0x00ff77, 0.05, smallScene, 'S_BCD');
+      drawSmallSphereWithLabel(S_ACD_small, 0x00ff77, 0.05, smallScene, 'S_ACD');
+      drawSmallSphereWithLabel(S_ABD_small, 0x00ff77, 0.05, smallScene, 'S_ABD');
+      drawSmallSphereWithLabel(S_ABC_small, 0x00ff77, 0.05, smallScene, 'S_ABC');
 
-      // Werte-Mittelpunkt (Leuchtend Rot)
-      drawSmallSphere(W_small, 0xff0055, 0.22, smallScene);
+      // Werte-Mittelpunkt (Leuchtend Rot, kleiner)
+      drawSmallSphereWithLabel(W_small, 0xff0055, 0.1, smallScene, 'WM');
     }
     createSmallTetra();
 
