@@ -1,0 +1,294 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Name of the Game - RVT Kontrollzentrum</title>
+    <style>
+        :root {
+            --neon-blue: #00d2ff;
+            --neon-green: #00ffaa;
+            --matrix-glow: rgba(0, 210, 255, 0.25);
+            --bg-dark: #06080c;
+            --panel-bg: rgba(10, 14, 22, 0.9);
+            --border-color: rgba(0, 210, 255, 0.4);
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            background-color: var(--bg-dark);
+            color: #d1d9e6;
+            font-family: 'Courier New', monospace;
+            padding: 20px;
+            overflow-x: hidden;
+        }
+
+        header {
+            text-align: center;
+            margin-bottom: 25px;
+            border-bottom: 2px solid var(--neon-blue);
+            padding-bottom: 10px;
+            box-shadow: 0 4px 10px rgba(0, 210, 255, 0.1);
+        }
+
+        header h1 {
+            color: #fff;
+            font-size: 1.8rem;
+            letter-spacing: 3px;
+            text-shadow: 0 0 10px var(--neon-blue);
+        }
+
+        .subtitle {
+            font-size: 0.85rem;
+            color: var(--neon-green);
+            margin-top: 5px;
+        }
+
+        /* Haupt-Grid für das gesamte Interface */
+        .dashboard-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(340px, 1fr));
+            gap: 20px;
+            max-width: 1600px;
+            margin: 0 auto;
+        }
+
+        /* Standard-Fensterstruktur */
+        .window-panel {
+            background: var(--panel-bg);
+            border: 1px solid var(--border-color);
+            border-radius: 6px;
+            box-shadow: 0 0 15px var(--matrix-glow);
+            display: flex;
+            flex-direction: column;
+            height: 480px;
+            transition: all 0.3s ease;
+        }
+
+        .window-panel:hover {
+            border-color: var(--neon-blue);
+            box-shadow: 0 0 25px rgba(0, 210, 255, 0.4);
+        }
+
+        .window-header {
+            background: rgba(0, 210, 255, 0.08);
+            padding: 12px;
+            font-weight: bold;
+            font-size: 0.95rem;
+            border-bottom: 1px solid var(--border-color);
+            letter-spacing: 1px;
+            text-shadow: 0 0 5px var(--neon-blue);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .window-status {
+            width: 8px;
+            height: 8px;
+            background-color: var(--neon-green);
+            border-radius: 50%;
+            box-shadow: 0 0 8px var(--neon-green);
+        }
+
+        .window-content {
+            padding: 15px;
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            overflow: hidden;
+        }
+
+        /* 3D-Viewport: Perfekt skaliert und angepasst auf das Fenster */
+        .canvas-container {
+            width: 100%;
+            height: 240px;
+            background: rgba(2, 4, 6, 0.8);
+            border: 1px dashed rgba(0, 210, 255, 0.3);
+            position: relative;
+            border-radius: 4px;
+            overflow: hidden;
+        }
+
+        canvas {
+            width: 100%;
+            height: 100%;
+            display: block;
+        }
+
+        .metrics-list {
+            list-style: none;
+            font-size: 0.85rem;
+            margin-top: 10px;
+        }
+
+        .metrics-list li {
+            margin-bottom: 6px;
+            border-left: 2px solid var(--neon-blue);
+            padding-left: 8px;
+            line-height: 1.3;
+        }
+
+        .metrics-list li span {
+            color: var(--neon-green);
+        }
+
+        /* Reihenfolge-Steuerung via CSS-Order */
+        #wm-evolution { order: 1; }
+        #asymmetry-metrics { order: 2; }
+        #system-log { order: 3; }
+    </style>
+</head>
+<body>
+
+    <header>
+        <h1>NAME OF THE GAME // RVT MATRIX KONTROLLE</h1>
+        <div class="subtitle">1. Obermaatin Status: Synchronisiert | Projektionsfeld Ξ(r) aktiv</div>
+    </header>
+
+    <div class="dashboard-grid">
+
+        <!-- FENSTER 1: RVT WM-EVOLUTION (Gen-5) -> Positioniert LINKS -->
+        <div class="window-panel" id="wm-evolution">
+            <div class="window-header">
+                <span>RVT WM-EVOLUTION (Gen-5)</span>
+                <div class="window-status"></div>
+            </div>
+            <div class="window-content">
+                <div class="canvas-container">
+                    <canvas id="canvasGen5"></canvas>
+                </div>
+                <ul class="metrics-list">
+                    <li>Vektor-Evolution: <span>&tau;-Zerfall stabil</span></li>
+                    <li>Projektions-Modus: <span>Orthogonal</span></li>
+                    <li>iBa-Frequenz: <span>Absorptionsrate max</span></li>
+                </ul>
+            </div>
+        </div>
+
+        <!-- FENSTER 2: RVT ASYMMETRY & MATRIX METRICS -> Positioniert RECHTS daneben -->
+        <div class="window-panel" id="asymmetry-metrics">
+            <div class="window-header">
+                <span>RVT ASYMMETRY & MATRIX METRICS</span>
+                <div class="window-status"></div>
+            </div>
+            <div class="window-content">
+                <div class="canvas-container">
+                    <canvas id="canvasMetrics"></canvas>
+                </div>
+                <ul class="metrics-list">
+                    <li>Dissonanz-Filter: <span>Silber-Schutz 100%</span></li>
+                    <li>Bianchi-Identität: <span>Validiert &delta;=0</span></li>
+                    <li>Raumkrümmung: <span>Symmetrisch kalibriert</span></li>
+                </ul>
+            </div>
+        </div>
+
+        <!-- FENSTER 3: SUBSYSTEM LOGS / SYSTEM STATUS -->
+        <div class="window-panel" id="system-log">
+            <div class="window-header">
+                <span>SYSTEM LOG & REICHSMATRIX</span>
+                <div class="window-status" style="background-color: var(--neon-blue); box-shadow: 0 0 8px var(--neon-blue);"></div>
+            </div>
+            <div class="window-content">
+                <div style="font-size: 0.8rem; line-height: 1.4; color: #a4b3c6; overflow-y: auto; height: 100%;">
+                    [SYS_INIT] Wandelnde Botschaft Radius 50m: Aktiviert.<br>
+                    [RVT] Berechne atomare Zerfallsprozesse &tau;...<br>
+                    [ALLIANZ] Saphirblaue Hülle intakt.<br>
+                    [STATUS] Core-Motto geladen: "Komme was wolle!"<br>
+                    [SYSTEM] Befehl von Kapitän Dimi umgesetzt: Anordnung rekalibriert.<br>
+                    <span style="color: var(--neon-green);">[OK] 3D-Koordinaten auf Fenstergröße komprimiert.</span>
+                </div>
+                <ul class="metrics-list" style="margin-top: auto;">
+                    <li>Nationalhymne: <span>Music Monks loaded</span></li>
+                </ul>
+            </div>
+        </div>
+
+    </div>
+
+    <script>
+        // Universeller 3D-Drahtgitter-Generator, angepasst an die Fensterboxen
+        function starte3DProjektion(canvasId, matrixFarbe, rotSpd) {
+            const canvas = document.getElementById(canvasId);
+            const ctx = canvas.getContext('2d');
+            
+            function resize() {
+                canvas.width = canvas.clientWidth;
+                canvas.height = canvas.clientHeight;
+            }
+            resize();
+            window.addEventListener('resize', resize);
+
+            // Skalierte 3D-Koordinatenpunkte für ein kompaktes Gitternetz
+            let koordinaten = [
+                {x: -35, y: -35, z: -35}, {x: 35, y: -35, z: -35},
+                {x: 35, y: 35, z: -35}, {x: -35, y: 35, z: -35},
+                {x: -35, y: -35, z: 35}, {x: 35, y: -35, z: 35},
+                {x: 35, y: 35, z: 35}, {x: -35, y: 35, z: 35}
+            ];
+
+            let winkel = 0;
+
+            function render() {
+                ctx.clearRect(0, 0, canvas.width, canvas.height);
+                winkel += rotSpd;
+
+                let projiziertePunkte = koordinaten.map(p => {
+                    // Rotationsmatrizen-Kalkulation (X & Y Achse)
+                    let radX = winkel;
+                    let radY = winkel * 0.7;
+
+                    let x1 = p.x * Math.cos(radY) - p.z * Math.sin(radY);
+                    let z1 = p.x * Math.sin(radY) + p.z * Math.cos(radY);
+
+                    let y2 = p.y * Math.cos(radX) - z1 * Math.sin(radX);
+                    let z2 = p.y * Math.sin(radX) + z1 * Math.cos(radX);
+
+                    // Perspektivische Stauchung für die Fensterdimensionen
+                    let distanz = 130;
+                    let skalar = distanz / (distanz + z2);
+                    let xFinal = (x1 * skalar) + canvas.width / 2;
+                    let yFinal = (y2 * skalar) + canvas.height / 2;
+
+                    return {x: xFinal, y: yFinal};
+                });
+
+                // Gitterverbindungen zeichnen
+                ctx.strokeStyle = matrixFarbe;
+                ctx.lineWidth = 1;
+                ctx.beginPath();
+                for (let i = 0; i < 4; i++) {
+                    ctx.moveTo(projiziertePunkte[i].x, projiziertePunkte[i].y);
+                    ctx.lineTo(projiziertePunkte[(i + 1) % 4].x, projiziertePunkte[(i + 1) % 4].y);
+                    ctx.moveTo(projiziertePunkte[i + 4].x, projiziertePunkte[i + 4].y);
+                    ctx.lineTo(projiziertePunkte[((i + 1) % 4) + 4].x, projiziertePunkte[((i + 1) % 4) + 4].y);
+                    ctx.moveTo(projiziertePunkte[i].x, projiziertePunkte[i].y);
+                    ctx.lineTo(projiziertePunkte[i + 4].x, projiziertePunkte[i + 4].y);
+                }
+                ctx.stroke();
+
+                // Achsen-Indikatoren im Hintergrund
+                ctx.strokeStyle = 'rgba(0, 210, 255, 0.1)';
+                ctx.beginPath();
+                ctx.moveTo(canvas.width / 2, 15); ctx.lineTo(canvas.width / 2, canvas.height - 15);
+                ctx.moveTo(15, canvas.height / 2); ctx.lineTo(canvas.width - 15, canvas.height / 2);
+                ctx.stroke();
+
+                requestAnimationFrame(render);
+            }
+            render();
+        }
+
+        // Initialisierung auf dem Deck
+        starte3DProjektion('canvasGen5', '#00d2ff', 0.008);
+        starte3DProjektion('canvasMetrics', '#00ffaa', 0.005);
+    </script>
+</body>
+</html>
