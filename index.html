@@ -2,7 +2,7 @@
 <html lang="de">
 <head>
   <meta charset="UTF-8" />
-  <title>Kubus-Kaskade – RVT v16 – Invertiertes Interface mit Scroll-Abstand</title>
+  <title>Kubus-Kaskade – RVT v16 – WM Auto-Scaling & Stammbaum-Resonanz</title>
   <style>
     body { margin: 0; overflow: hidden; background: #000; color: #fff; font-family: sans-serif; }
 
@@ -49,35 +49,6 @@
       z-index: 15;
     }
 
-    /* NEUES SEPARATES FENSTER: RVT WM-EVOLUTION (Gen-5) - Links neben Asymmetry platziert */
-    #wm-evolution-panel {
-      position: absolute;
-      top: 10px;
-      right: 360px; /* Exakt links neben dem rechten HUD */
-      width: 340px;
-      height: 400px;
-      border: 1px solid #ff0055;
-      border-radius: 8px;
-      background: rgba(5, 2, 2, 0.9);
-      z-index: 15;
-      display: flex;
-      flex-direction: column;
-    }
-    #wmCanvas3D {
-      width: 100%;
-      height: 240px;
-      background: #000;
-      border-bottom: 1px solid rgba(255, 0, 85, 0.3);
-    }
-    #wm-telemetry {
-      padding: 10px;
-      font-size: 11px;
-      font-family: monospace;
-      color: #ff0055;
-      overflow-y: auto;
-      flex: 1;
-    }
-
     /* Asymmetrische Werte - Unter dem kleinen Tetraeder */
     #asym-hud-container {
       position: absolute;
@@ -101,13 +72,41 @@
       border-bottom: 1px dashed rgba(0, 255, 255, 0.3);
       padding-bottom: 2px;
     }
-
     #wm-calculation {
       margin-top: 10px;
       font-size: 11px;
       color: #00ffaa;
       font-family: monospace;
       white-space: pre-wrap;
+    }
+
+    /* SEPARATES FENSTER: RVT WM-EVOLUTION (Gen-5) - Links verschoben gegen Überlappung */
+    #wm-evolution-panel {
+      position: absolute;
+      top: 10px;
+      right: 390px; 
+      width: 340px;
+      height: 400px;
+      border: 1px solid #ff0055;
+      border-radius: 8px;
+      background: rgba(5, 2, 2, 0.9);
+      z-index: 15;
+      display: flex;
+      flex-direction: column;
+    }
+    #wmCanvas3D {
+      width: 100%;
+      height: 240px;
+      background: #000;
+      border-bottom: 1px solid rgba(255, 0, 85, 0.3);
+    }
+    #wm-telemetry {
+      padding: 10px;
+      font-size: 11px;
+      font-family: monospace;
+      color: #ff0055;
+      overflow-y: auto;
+      flex: 1;
     }
 
     /* Rechtes HUD (RVT ASYMMETRY & MATRIX METRICS) */
@@ -191,9 +190,9 @@
     </div>
   </div>
 
-  <!-- SEPARATES WM-EVOLUTION FENSTER (LINKS NEBEN ASYMMETRY) -->
+  <!-- SEPARATES WM-EVOLUTION FENSTER MIT GELBEN STAMMBAUM-LINIEN -->
   <div id="wm-evolution-panel">
-    <div style="padding: 8px; font-weight: bold; font-size: 11px; color: #ff0055; border-bottom: 1px solid rgba(255,0,85,0.3);">RVT WM-EVOLUTION (Gen-5)</div>
+    <div style="padding: 8px; font-weight: bold; font-size: 11px; color: #ff0055; border-bottom: 1px solid rgba(255,0,85,0.3);">RVT WM-EVOLUTION (Auto-Scale)</div>
     <canvas id="wmCanvas3D"></canvas>
     <div id="wm-telemetry">Warte auf Vektoren...</div>
   </div>
@@ -231,15 +230,17 @@
     dirLight.position.set(20, 40, 30);
     scene.add(dirLight);
 
-    // Initialisierung des separaten WM-Drahtgitter-Fensters (Responsive verkleinert)
+    // Initialisierung des separaten WM-Drahtgitter-Fensters
     const wmCanvas = document.getElementById('wmCanvas3D');
     const wmRenderer = new THREE.WebGLRenderer({ canvas: wmCanvas, antialias: true });
     wmRenderer.setSize(340, 240);
     const wmScene = new THREE.Scene();
     wmScene.background = new THREE.Color(0x050102);
-    const wmCamera = new THREE.PerspectiveCamera(50, 340 / 240, 0.1, 100);
+    const wmCamera = new THREE.PerspectiveCamera(50, 340 / 240, 0.1, 1000);
     wmCamera.position.set(0, 0, 4);
     wmScene.add(new THREE.AmbientLight(0xffffff, 0.9));
+
+    let wmBoundingBox = new THREE.Box3(); 
 
     let dynamicMeshes = [];
     let trackingPoints = [];
@@ -259,9 +260,13 @@
     let gen5SpitzenDistanzen = {};
     let volumenLogDaten = {};
     let gen5SpitzenObjekte = [];
-    let yellowLinesCreated = false;
     let urTetraederMittelpunkt = new THREE.Vector3();
-    let wmVectorenListe = []; // Speicher für die separaten 3D-WM-Kugeln
+    let wmVectorenListe = []; 
+    
+    // Speicher für die Kaskaden-Verbindung der WM-Punkte im kleinen Fenster
+    let wmBranchPositions = {}; 
+    let wmUrPunktMesh = null;
+
     const clock = new THREE.Clock();
 
     const A = new THREE.Vector3(0.0 * s, 5.0 * s, 0.5 * s);
@@ -275,7 +280,6 @@
       return new THREE.Vector3().crossVectors(v1, v2).length() * 0.5;
     }
 
-    // Die verlangte asymmetrische Berechnungsfunktion für den Werte-Mittelpunkt
     function berechneAsymmetrischenWM(pA, pB, pC, pD) {
       const area_A = getTriangleArea(pB, pC, pD);
       const area_B = getTriangleArea(pA, pC, pD);
@@ -453,8 +457,6 @@
       let wmText = "WM: N/A";
       if (WerteMittelpunkt) {
         wmText = `WM: X:${WerteMittelpunkt.x.toFixed(3)} Y:${WerteMittelpunkt.y.toFixed(3)} Z:${WerteMittelpunkt.z.toFixed(3)}`;
-        
-        // Exklusiv: Aufbereitung für das separate WM-Fenster
         fuegeZuWMEvolutionHinzu(text, WerteMittelpunkt);
       }
       let row = document.getElementById(id);
@@ -473,7 +475,7 @@
       trackingPoints.push({ id: id, pos3D: position3D.clone() });
     }
 
-    // Fügt den berechneten asymmetrischen WM grafisch in das separate Fenster ein
+    // EXKLUSIVE GELBE RESONANZLINIEN-LOGIK FÜR DIE GEOMETRISCHEN GRAPHENWERTE IN DER KLEINEN BOX
     function fuegeZuWMEvolutionHinzu(idText, wmVektor) {
       const div = document.getElementById('wm-telemetry');
       if(div.innerHTML.includes("Warte auf Vektoren")) div.innerHTML = "";
@@ -481,14 +483,48 @@
       div.innerHTML += `ID ${idText}: [${wmVektor.x.toFixed(3)}, ${wmVektor.y.toFixed(3)}, ${wmVektor.z.toFixed(3)}]<br/>`;
       div.scrollTop = div.scrollHeight;
 
-      // Erstelle 3D-Marker im separaten Fenster
       const geom = new THREE.SphereGeometry(0.06, 8, 8);
       const mat = new THREE.MeshPhongMaterial({ color: 0xff0055, emissive: 0xff0055, emissiveIntensity: 0.6 });
       const mesh = new THREE.Mesh(geom, mat);
-      // Skaliert/Verschoben für das kleine Anzeigefenster zentriert um den Ursprung
-      mesh.position.copy(wmVektor).sub(urTetraederMittelpunkt).multiplyScalar(2.0);
+      
+      mesh.position.copy(wmVektor);
       wmScene.add(mesh);
       wmVectorenListe.push(mesh);
+      wmBoundingBox.expandByPoint(wmVektor);
+
+      // Stammbaum-Struktur parsen (z.B. "2.1", "Ur-Tetra")
+      const lineMat = new THREE.LineBasicMaterial({ color: 0xffff00, linewidth: 2 });
+
+      if (idText === "Ur-Tetra") {
+        wmUrPunktMesh = mesh;
+      } else {
+        const parts = idText.split('.');
+        const genNumber = parseInt(parts[0]);
+        const zweigNummer = parseInt(parts[1]);
+
+        if (!wmBranchPositions[genNumber]) wmBranchPositions[genNumber] = {};
+        wmBranchPositions[genNumber][zweigNummer] = mesh.position.clone();
+
+        if (genNumber === 2) {
+          // Verbinde vom Urpunkt aus zu 2.1, 2.2, 2.3, 2.4, 2.5, 2.6
+          if (wmUrPunktMesh) {
+            const lineGeom = new THREE.BufferGeometry().setFromPoints([wmUrPunktMesh.position, mesh.position]);
+            const line = new THREE.Line(lineGeom, lineMat);
+            wmScene.add(line);
+            wmVectorenListe.push(line);
+          }
+        } else {
+          // Verbinde alle x.1 nach demselben Schema (innerhalb ihrer x.y Konfiguration)
+          const prevGen = genNumber - 1;
+          if (wmBranchPositions[prevGen] && wmBranchPositions[prevGen][zweigNummer]) {
+            const prevPos = wmBranchPositions[prevGen][zweigNummer];
+            const lineGeom = new THREE.BufferGeometry().setFromPoints([prevPos, mesh.position]);
+            const line = new THREE.Line(lineGeom, lineMat);
+            wmScene.add(line);
+            wmVectorenListe.push(line);
+          }
+        }
+      }
     }
 
     function updateBoundingBox(points) {
@@ -511,7 +547,6 @@
       const kantenMuster = generateTetraEdgeColors(baseEdgeColor);
       updateBoundingBox(points);
       
-      // Berechnung über die geforderte asymmetrische Funktion für alle Kaskadenteile
       const W = berechneAsymmetrischenWM(p[0], p[1], p[2], p[3]);
 
       const tetraMP = new THREE.Vector3(
@@ -562,7 +597,7 @@
         scene.add(line);
         dynamicMeshes.push(line);
       });
-      return kantenMuster;
+      return { kantenMuster, tetraMP };
     }
 
     function computeFreeEdgeLengths(outerA, outerB, tetraP3, tetraP4) {
@@ -639,6 +674,7 @@
       gen5SpitzenDistanzen[edgeIndex] = maxDist.toFixed(4);
       gen5SpitzenObjekte.push({ index: edgeIndex, vector: absoluteSpitzeVec });
       ausgabeSpitzenDistanzen();
+      berechneUndZeigeWinkel();
     }
 
     function ausgabeSpitzenDistanzen() {
@@ -709,19 +745,6 @@
       return { outerA, outerB, length, dir, ortho1: finalNormal, ortho2: finalOrtho2 };
     }
 
-    function drawYellowResonanceLines() {
-      if (yellowLinesCreated) return;
-      const lineMaterial = new THREE.LineBasicMaterial({ color: 0xffff00, linewidth: 3 });
-      gen5SpitzenObjekte.forEach(obj => {
-        const lineGeom = new THREE.BufferGeometry().setFromPoints([urTetraederMittelpunkt, obj.vector]);
-        const line = new THREE.Line(lineGeom, lineMaterial);
-        scene.add(line);
-        dynamicMeshes.push(line);
-      });
-      yellowLinesCreated = true;
-      berechneUndZeigeWinkel();
-    }
-
     function initCascade() {
       dynamicMeshes.forEach(mesh => { scene.remove(mesh); if(mesh.geometry) mesh.geometry.dispose(); if(mesh.material) mesh.material.dispose(); });
       wmVectorenListe.forEach(m => { wmScene.remove(m); if(m.geometry) m.geometry.dispose(); if(m.material) m.material.dispose(); });
@@ -732,7 +755,9 @@
       volumenLogDaten = {};
       gen5SpitzenObjekte = [];
       wmVectorenListe = [];
-      yellowLinesCreated = false;
+      wmBoundingBox.makeEmpty();
+      wmBranchPositions = { 2: {}, 3: {}, 4: {}, 5: {} };
+      wmUrPunktMesh = null;
       
       const container = document.getElementById('hud-labels-container');
       if (container) container.innerHTML = "";
@@ -816,10 +841,11 @@
       const cD = step.data;
       const idx = step.edgeIndex;
       const zweigNummer = idx + 1;
+      
       if (step.type === 'CUBE_GEN1') {
         const cubeData = buildCubeOnEdgeAligned(cD.a, cD.b, cD.normal, cD.color, 0.45, false, idx, false);
         animationQueue.push({ type: 'TETRA_GEN2', edgeIndex: idx, data: { ...cubeData, volume: cD.volume, color: cD.color } });
-      } else if (step.type === 'TETRA_GEN2' || step.type === 'TETRA_GEN3' || step.type === 'TETRA_GEN4' || step.type === 'TETRA_GEN5') {
+      } else if (step.type.startsWith('TETRA_GEN')) {
         let baseScale = 1.10; let nextGenType = 'CUBE_GEN2'; let genNumber = 2;
         if (step.type === 'TETRA_GEN3') { baseScale = 1.08; nextGenType = 'CUBE_GEN3'; genNumber = 3; }
         if (step.type === 'TETRA_GEN4') { baseScale = 1.05; nextGenType = 'CUBE_GEN4'; genNumber = 4; }
@@ -853,6 +879,7 @@
         speichereKaskadenHistorie(genNumber, idx, freieKanten, aktivesLimit);
         const berechnetesVol = tetraVolume(tetraP3, tetraP4, cD.outerA, cD.outerB);
         loggeTetraederVolumen(genNumber, zweigNummer, berechnetesVol);
+        
         createColoredTetra(
           [[tetraP3.x, tetraP3.y, tetraP3.z], [tetraP4.x, tetraP4.y, tetraP4.z], [cD.outerA.x, cD.outerA.y, cD.outerA.z], [cD.outerB.x, cD.outerB.y, cD.outerB.z]],
           cD.color,
@@ -861,6 +888,7 @@
           `label-${genNumber}-${zweigNummer}`,
           cD.length
         );
+
         let nextCubeColor = (cD.color === 0xff0000) ? 0x0000ff : 0xff0000;
         animationQueue.push({ type: nextGenType, edgeIndex: idx, data: { a: tetraP3, b: tetraP4, volume: cD.volume, normal: vec45_A, color: nextCubeColor } });
       } else if (step.type === 'CUBE_GEN2') {
@@ -907,9 +935,22 @@
       smallScene.rotation.y = smallAngle * 0.8;
       smallRenderer.render(smallScene, smallCamera);
 
-      // Eigenständige Rotation der Vektorenwolke im separaten WM-Fenster
       wmScene.rotation.y += delta * 1.0;
       wmScene.rotation.x = 0.2;
+      
+      if (!wmBoundingBox.isEmpty()) {
+        const center = new THREE.Vector3();
+        wmBoundingBox.getCenter(center);
+        const size = new THREE.Vector3();
+        wmBoundingBox.getSize(size);
+        const maxDim = Math.max(size.x, size.y, size.z, 0.1);
+        
+        wmCamera.position.x = center.x;
+        wmCamera.position.y = center.y;
+        wmCamera.position.z = center.z + maxDim * 1.8 + 1.0; 
+        wmCamera.lookAt(center);
+      }
+      
       wmRenderer.render(wmScene, wmCamera);
 
       if (isBuilding) {
@@ -921,7 +962,6 @@
           } else { isBuilding = false; }
         }
       } else {
-        drawYellowResonanceLines();
         timeSinceBuildEnd += delta;
         if (timeSinceBuildEnd > resetTimer) initCascade();
       }
