@@ -165,14 +165,6 @@
     const independentGroup = new THREE.Group();
     scene.add(independentGroup);
 
-    // Beispiel: Ein rotierender Ring um den Werte-Mittelpunkt W
-    const ringGeometry = new THREE.TorusGeometry(3, 0.1, 16, 100);
-    const ringMaterial = new THREE.MeshBasicMaterial({ color: 0x00aaff, wireframe: true });
-    const ring = new THREE.Mesh(ringGeometry, ringMaterial);
-    ring.position.copy(W);
-    ring.rotation.x = Math.PI / 2; // Ring in XY-Ebene
-    independentGroup.add(ring);
-
     function animate() {
       requestAnimationFrame(animate);
       angle += 0.008;
@@ -182,9 +174,6 @@
       camera.position.z = W.z + Math.cos(angle) * rigidRadius;
       camera.position.y = W.y + constantHeightOffset;
       camera.lookAt(W);
-
-      // Unabhängige Animation: Ring rotiert um W
-      ring.rotation.z += 0.01;
 
       renderer.render(scene, camera);
     }
