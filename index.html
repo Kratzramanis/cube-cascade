@@ -2,7 +2,7 @@
 <html lang="de">
 <head>
   <meta charset="UTF-8" />
-  <title>Kubus-Kaskade – RVT v16 – WM Auto-Scaling & Stammbaum-Resonanz</title>
+  <title>Kubus-Kaskade – RVT v16 – WM & MP Dual-Evolution</title>
   <style>
     body { margin: 0; overflow: hidden; background: #000; color: #fff; font-family: sans-serif; }
 
@@ -80,13 +80,13 @@
       white-space: pre-wrap;
     }
 
-    /* SEPARATES FENSTER: RVT WM-EVOLUTION (Gen-5) - Links verschoben gegen Überlappung */
+    /* SEPARATES FENSTER: RVT WM-EVOLUTION (Um 1/3 vergrößert gegen die Ur-Version) */
     #wm-evolution-panel {
       position: absolute;
       top: 10px;
       right: 390px; 
-      width: 340px;
-      height: 400px;
+      width: 450px; /* Von 340px um ~1/3 vergrößert */
+      height: 530px; /* Von 400px um ~1/3 vergrößert */
       border: 1px solid #ff0055;
       border-radius: 8px;
       background: rgba(5, 2, 2, 0.9);
@@ -96,7 +96,7 @@
     }
     #wmCanvas3D {
       width: 100%;
-      height: 240px;
+      height: 320px; /* Anpassung an die neue Höhe */
       background: #000;
       border-bottom: 1px solid rgba(255, 0, 85, 0.3);
     }
@@ -104,7 +104,7 @@
       padding: 10px;
       font-size: 11px;
       font-family: monospace;
-      color: #ff0055;
+      color: #ffaa00;
       overflow-y: auto;
       flex: 1;
     }
@@ -145,9 +145,9 @@
       border-bottom: 1px dashed rgba(0, 255, 170, 0.2);
       padding-bottom: 2px;
     }
-    .hud-pos { color: #ffaa00; font-size: 10px; }
+    .hud-pos { color: #00ffff; font-size: 10px; } /* Cyan für MP */
     .hud-wm { color: #ff0055; font-size: 10px; font-weight: bold; }
-    .hud-metrics { color: #00ffff; display: flex; justify-content: space-between; font-size: 9px; }
+    .hud-metrics { color: #00ffaa; display: flex; justify-content: space-between; font-size: 9px; }
 
     #lineCanvas {
       position: absolute;
@@ -190,9 +190,12 @@
     </div>
   </div>
 
-  <!-- SEPARATES WM-EVOLUTION FENSTER MIT GELBEN STAMMBAUM-LINIEN -->
+  <!-- SEPARATES DUAL-EVOLUTION FENSTER (VERGRÖSSERT) -->
   <div id="wm-evolution-panel">
-    <div style="padding: 8px; font-weight: bold; font-size: 11px; color: #ff0055; border-bottom: 1px solid rgba(255,0,85,0.3);">RVT WM-EVOLUTION (Auto-Scale)</div>
+    <div style="padding: 8px; font-weight: bold; font-size: 11px; color: #ff0055; border-bottom: 1px solid rgba(255,0,85,0.3); display: flex; justify-content: space-between;">
+      <span>RVT DUAL-EVOLUTION (Auto-Scale)</span>
+      <span style="color: #00ffff; font-size: 9px;">WM (Pink/Gelb) vs MP (Cyan/Orange)</span>
+    </div>
     <canvas id="wmCanvas3D"></canvas>
     <div id="wm-telemetry">Warte auf Vektoren...</div>
   </div>
@@ -230,13 +233,13 @@
     dirLight.position.set(20, 40, 30);
     scene.add(dirLight);
 
-    // Initialisierung des separaten WM-Drahtgitter-Fensters
+    // Initialisierung des vergrößerten Evolution-Fensters
     const wmCanvas = document.getElementById('wmCanvas3D');
     const wmRenderer = new THREE.WebGLRenderer({ canvas: wmCanvas, antialias: true });
-    wmRenderer.setSize(340, 240);
+    wmRenderer.setSize(450, 320); // Dimensionen synchronisiert mit CSS
     const wmScene = new THREE.Scene();
     wmScene.background = new THREE.Color(0x050102);
-    const wmCamera = new THREE.PerspectiveCamera(50, 340 / 240, 0.1, 1000);
+    const wmCamera = new THREE.PerspectiveCamera(50, 450 / 320, 0.1, 1000);
     wmCamera.position.set(0, 0, 4);
     wmScene.add(new THREE.AmbientLight(0xffffff, 0.9));
 
@@ -261,11 +264,13 @@
     let volumenLogDaten = {};
     let gen5SpitzenObjekte = [];
     let urTetraederMittelpunkt = new THREE.Vector3();
-    let wmVectorenListe = []; 
+    let evolutionElements = []; 
     
-    // Speicher für die Kaskaden-Verbindung der WM-Punkte im kleinen Fenster
+    // Zweig-Speicher für WM und MP getrennt
     let wmBranchPositions = {}; 
+    let mpBranchPositions = {};
     let wmUrPunktMesh = null;
+    let mpUrPunktMesh = null;
 
     const clock = new THREE.Clock();
 
@@ -457,7 +462,8 @@
       let wmText = "WM: N/A";
       if (WerteMittelpunkt) {
         wmText = `WM: X:${WerteMittelpunkt.x.toFixed(3)} Y:${WerteMittelpunkt.y.toFixed(3)} Z:${WerteMittelpunkt.z.toFixed(3)}`;
-        fuegeZuWMEvolutionHinzu(text, WerteMittelpunkt);
+        // Schreibe BEIDE Punkte (WM und MP/position3D) in die vergrößerte Evolution-Box
+        fuegeZuDualEvolutionHinzu(text, WerteMittelpunkt, position3D);
       }
       let row = document.getElementById(id);
       if (!row) {
@@ -475,53 +481,75 @@
       trackingPoints.push({ id: id, pos3D: position3D.clone() });
     }
 
-    // EXKLUSIVE GELBE RESONANZLINIEN-LOGIK FÜR DIE GEOMETRISCHEN GRAPHENWERTE IN DER KLEINEN BOX
-    function fuegeZuWMEvolutionHinzu(idText, wmVektor) {
+    // ERWEITERTE LOGIK FÜR DIE GRAPHENWERTE IN DER VERGRÖSSERTEN BOX: WM (PINK/GELB) VS MP (CYAN/ORANGE)
+    function fuegeZuDualEvolutionHinzu(idText, wmVektor, mpVektor) {
       const div = document.getElementById('wm-telemetry');
       if(div.innerHTML.includes("Warte auf Vektoren")) div.innerHTML = "";
       
-      div.innerHTML += `ID ${idText}: [${wmVektor.x.toFixed(3)}, ${wmVektor.y.toFixed(3)}, ${wmVektor.z.toFixed(3)}]<br/>`;
+      div.innerHTML += `ID ${idText} -> <span style="color:#ff0055;">WM:[${wmVektor.x.toFixed(2)},${wmVektor.y.toFixed(2)},${wmVektor.z.toFixed(2)}]</span> | <span style="color:#00ffff;">MP:[${mpVektor.x.toFixed(2)},${mpVektor.y.toFixed(2)},${mpVektor.z.toFixed(2)}]</span><br/>`;
       div.scrollTop = div.scrollHeight;
 
-      const geom = new THREE.SphereGeometry(0.06, 8, 8);
-      const mat = new THREE.MeshPhongMaterial({ color: 0xff0055, emissive: 0xff0055, emissiveIntensity: 0.6 });
-      const mesh = new THREE.Mesh(geom, mat);
-      
-      mesh.position.copy(wmVektor);
-      wmScene.add(mesh);
-      wmVectorenListe.push(mesh);
+      // --- 1. VERARBEITUNG DES WM-PUNKTES (Pink / Gelbe Linien) ---
+      const wmGeom = new THREE.SphereGeometry(0.06, 8, 8);
+      const wmMat = new THREE.MeshPhongMaterial({ color: 0xff0055, emissive: 0xff0055, emissiveIntensity: 0.6 });
+      const wmMesh = new THREE.Mesh(wmGeom, wmMat);
+      wmMesh.position.copy(wmVektor);
+      wmScene.add(wmMesh);
+      evolutionElements.push(wmMesh);
       wmBoundingBox.expandByPoint(wmVektor);
 
-      // Stammbaum-Struktur parsen (z.B. "2.1", "Ur-Tetra")
-      const lineMat = new THREE.LineBasicMaterial({ color: 0xffff00, linewidth: 2 });
+      const wmLineMat = new THREE.LineBasicMaterial({ color: 0xffff00, linewidth: 2 });
 
+      // --- 2. VERARBEITUNG DES MP-PUNKTES (Cyan / Orange Linien) ---
+      const mpGeom = new THREE.SphereGeometry(0.06, 8, 8);
+      const mpMat = new THREE.MeshPhongMaterial({ color: 0x00ffff, emissive: 0x00ffff, emissiveIntensity: 0.6 });
+      const mpMesh = new THREE.Mesh(mpGeom, mpMat);
+      mpMesh.position.copy(mpVektor);
+      wmScene.add(mpMesh);
+      evolutionElements.push(mpMesh);
+      wmBoundingBox.expandByPoint(mpVektor);
+
+      const mpLineMat = new THREE.LineBasicMaterial({ color: 0xffaa00, linewidth: 2 });
+
+      // Stammbaum-Kaskadierung parsen
       if (idText === "Ur-Tetra") {
-        wmUrPunktMesh = mesh;
+        wmUrPunktMesh = wmMesh;
+        mpUrPunktMesh = mpMesh;
       } else {
         const parts = idText.split('.');
         const genNumber = parseInt(parts[0]);
         const zweigNummer = parseInt(parts[1]);
 
         if (!wmBranchPositions[genNumber]) wmBranchPositions[genNumber] = {};
-        wmBranchPositions[genNumber][zweigNummer] = mesh.position.clone();
+        if (!mpBranchPositions[genNumber]) mpBranchPositions[genNumber] = {};
+        
+        wmBranchPositions[genNumber][zweigNummer] = wmMesh.position.clone();
+        mpBranchPositions[genNumber][zweigNummer] = mpMesh.position.clone();
 
         if (genNumber === 2) {
-          // Verbinde vom Urpunkt aus zu 2.1, 2.2, 2.3, 2.4, 2.5, 2.6
+          // Verbindung vom Ursprung aus (Generation 1 zu 2)
           if (wmUrPunktMesh) {
-            const lineGeom = new THREE.BufferGeometry().setFromPoints([wmUrPunktMesh.position, mesh.position]);
-            const line = new THREE.Line(lineGeom, lineMat);
-            wmScene.add(line);
-            wmVectorenListe.push(line);
+            const lGeom = new THREE.BufferGeometry().setFromPoints([wmUrPunktMesh.position, wmMesh.position]);
+            const l = new THREE.Line(lGeom, wmLineMat);
+            wmScene.add(l); evolutionElements.push(l);
+          }
+          if (mpUrPunktMesh) {
+            const lGeom = new THREE.BufferGeometry().setFromPoints([mpUrPunktMesh.position, mpMesh.position]);
+            const l = new THREE.Line(lGeom, mpLineMat);
+            wmScene.add(l); evolutionElements.push(l);
           }
         } else {
-          // Verbinde alle x.1 nach demselben Schema (innerhalb ihrer x.y Konfiguration)
+          // Verbindung nach Generationen-Ast (x-1.y zu x.y)
           const prevGen = genNumber - 1;
           if (wmBranchPositions[prevGen] && wmBranchPositions[prevGen][zweigNummer]) {
-            const prevPos = wmBranchPositions[prevGen][zweigNummer];
-            const lineGeom = new THREE.BufferGeometry().setFromPoints([prevPos, mesh.position]);
-            const line = new THREE.Line(lineGeom, lineMat);
-            wmScene.add(line);
-            wmVectorenListe.push(line);
+            const lGeom = new THREE.BufferGeometry().setFromPoints([wmBranchPositions[prevGen][zweigNummer], wmMesh.position]);
+            const l = new THREE.Line(lGeom, wmLineMat);
+            wmScene.add(l); evolutionElements.push(l);
+          }
+          if (mpBranchPositions[prevGen] && mpBranchPositions[prevGen][zweigNummer]) {
+            const lGeom = new THREE.BufferGeometry().setFromPoints([mpBranchPositions[prevGen][zweigNummer], mpMesh.position]);
+            const l = new THREE.Line(lGeom, mpLineMat);
+            wmScene.add(l); evolutionElements.push(l);
           }
         }
       }
@@ -736,7 +764,7 @@
       if (isGen5 && edgeIndex !== -1) {
         berechneAeußersteSpitze(cube, edgeIndex);
       }
-      const outerMid = mid.clone().add(shift.clone().multiplyScalar(2));
+      const outerMid = mid.clone().add(shift.multiplyScalar(2));
       const outerA = outerMid.clone().addScaledVector(dir, -length / 2);
       const outerB = outerMid.clone().addScaledVector(dir, length / 2);
       boundingBox.expandByPoint(outerA);
@@ -747,17 +775,19 @@
 
     function initCascade() {
       dynamicMeshes.forEach(mesh => { scene.remove(mesh); if(mesh.geometry) mesh.geometry.dispose(); if(mesh.material) mesh.material.dispose(); });
-      wmVectorenListe.forEach(m => { wmScene.remove(m); if(m.geometry) m.geometry.dispose(); if(m.material) m.material.dispose(); });
+      evolutionElements.forEach(m => { wmScene.remove(m); if(m.geometry) m.geometry.dispose(); if(m.material) m.material.dispose(); });
       dynamicMeshes = [];
       trackingPoints = [];
       animationQueue = [];
       gen5SpitzenDistanzen = {};
       volumenLogDaten = {};
       gen5SpitzenObjekte = [];
-      wmVectorenListe = [];
+      evolutionElements = [];
       wmBoundingBox.makeEmpty();
       wmBranchPositions = { 2: {}, 3: {}, 4: {}, 5: {} };
+      mpBranchPositions = { 2: {}, 3: {}, 4: {}, 5: {} };
       wmUrPunktMesh = null;
+      mpUrPunktMesh = null;
       
       const container = document.getElementById('hud-labels-container');
       if (container) container.innerHTML = "";
